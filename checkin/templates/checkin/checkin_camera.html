@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Check In – {{ event.title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    #video-preview { transform: scaleX(-1); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto">
+    <div class="bg-white shadow-xl rounded-2xl overflow-hidden">
+        <div class="bg-blue-600 px-6 py-5 text-white text-center">
+            <h1 class="text-xl font-bold">Check In</h1>
+            <p class="text-blue-200 text-sm mt-1">{{ event.title }}</p>
+            <p class="text-blue-300 text-xs">{{ event.start_datetime|date:"d M Y, H:i" }} · {{ event.venue }}</p>
+        </div>
+
+        <div class="p-6 space-y-5">
+            <!-- Camera Preview -->
+            <div class="relative">
+                <div class="bg-gray-900 rounded-xl overflow-hidden aspect-square flex items-center justify-center">
+                    <video id="video-preview" class="w-full h-full object-cover" autoplay playsinline></video>
+                    <canvas id="snapshot-canvas" class="hidden"></canvas>
+                </div>
+                <div id="captured-preview" class="hidden">
+                    <img id="captured-img" src="" alt="Captured selfie"
+                        class="w-full rounded-xl object-cover aspect-square border-4 border-green-400">
+                </div>
+            </div>
+
+            <!-- Status / instructions -->
+            <div id="cam-status" class="text-center">
+                <p id="status-text" class="text-gray-500 text-sm">Starting camera…</p>
+            </div>
+
+            <!-- Capture button -->
+            <button id="capture-btn" onclick="capturePhoto()" disabled
+                class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition text-lg">
+                📸 Capture Selfie
+            </button>
+
+            <!-- Retake button (hidden until photo taken) -->
+            <button id="retake-btn" onclick="retakePhoto()" class="hidden w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 rounded-xl transition">
+                🔄 Retake
+            </button>
+
+            <!-- Form submission -->
+            <form id="checkin-form" method="post" action="/checkin/scan/">
+                {% csrf_token %}
+                <input type="hidden" name="token" value="{{ token }}">
+                <input type="hidden" id="selfie-data" name="selfie_data" value="">
+                <button type="submit" id="submit-btn" disabled
+                    class="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition text-lg">
+                    ✅ Confirm Check-In
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let videoStream = null;
+
+async function startCamera() {
+    const statusText = document.getElementById('status-text');
+    const captureBtn = document.getElementById('capture-btn');
+    const video = document.getElementById('video-preview');
+
+    try {
+        statusText.textContent = 'Requesting camera access…';
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
+        });
+        videoStream = stream;
+        video.srcObject = stream;
+        await video.play();
+        statusText.textContent = 'Position your face in the frame, then capture.';
+        captureBtn.disabled = false;
+    } catch (err) {
+        statusText.textContent = 'Camera access denied. Please allow camera permissions and reload.';
+        statusText.classList.add('text-red-500');
+        console.error('Camera error:', err);
+    }
+}
+
+function capturePhoto() {
+    const video = document.getElementById('video-preview');
+    const canvas = document.getElementById('snapshot-canvas');
+    const capturedPreview = document.getElementById('captured-preview');
+    const capturedImg = document.getElementById('captured-img');
+    const captureBtn = document.getElementById('capture-btn');
+    const retakeBtn = document.getElementById('retake-btn');
+    const submitBtn = document.getElementById('submit-btn');
+    const selfieData = document.getElementById('selfie-data');
+    const statusText = document.getElementById('status-text');
+
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 640;
+
+    const ctx = canvas.getContext('2d');
+    // Mirror the image to match the preview
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    selfieData.value = dataUrl;
+    capturedImg.src = dataUrl;
+
+    // Stop camera
+    if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+    }
+    video.parentElement.classList.add('hidden');
+    capturedPreview.classList.remove('hidden');
+    captureBtn.classList.add('hidden');
+    retakeBtn.classList.remove('hidden');
+    submitBtn.disabled = false;
+    statusText.textContent = 'Selfie captured! Click "Confirm Check-In" to proceed.';
+    statusText.classList.add('text-green-600');
+}
+
+function retakePhoto() {
+    const video = document.getElementById('video-preview');
+    const capturedPreview = document.getElementById('captured-preview');
+    const captureBtn = document.getElementById('capture-btn');
+    const retakeBtn = document.getElementById('retake-btn');
+    const submitBtn = document.getElementById('submit-btn');
+    const selfieData = document.getElementById('selfie-data');
+    const statusText = document.getElementById('status-text');
+
+    selfieData.value = '';
+    capturedPreview.classList.add('hidden');
+    video.parentElement.classList.remove('hidden');
+    captureBtn.classList.remove('hidden');
+    retakeBtn.classList.add('hidden');
+    submitBtn.disabled = true;
+    statusText.textContent = 'Restarting camera…';
+    statusText.classList.remove('text-green-600');
+    startCamera();
+}
+
+// Start camera on page load
+window.addEventListener('DOMContentLoaded', startCamera);
+</script>
+{% endblock %}

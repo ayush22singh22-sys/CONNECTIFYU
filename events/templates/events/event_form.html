@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white shadow rounded-2xl overflow-hidden">
+        <div class="bg-blue-600 px-6 py-5 text-white">
+            <h1 class="text-xl font-bold">{{ page_title }}</h1>
+            <p class="text-blue-200 text-sm mt-1">Fill in the details below to propose a new event</p>
+        </div>
+
+        <form method="post" class="p-6 space-y-6">
+            {% csrf_token %}
+
+            <!-- Basic Info -->
+            <div>
+                <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Basic Information</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Event Title <span class="text-red-500">*</span></label>
+                        {{ form.title }}
+                        {% if form.title.errors %}<p class="text-red-500 text-xs mt-1">{{ form.title.errors|join:", " }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Event Type <span class="text-red-500">*</span></label>
+                        {{ form.event_type }}
+                        {% if form.event_type.errors %}<p class="text-red-500 text-xs mt-1">{{ form.event_type.errors|join:", " }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Co-Coordinator</label>
+                        {{ form.co_coordinator }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                        {{ form.department }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Club Name</label>
+                        {{ form.club_name }}
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Description <span class="text-red-500">*</span></label>
+                        {{ form.description }}
+                        {% if form.description.errors %}<p class="text-red-500 text-xs mt-1">{{ form.description.errors|join:", " }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guest Speaker -->
+            <div>
+                <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Guest Speaker (Optional)</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Speaker Name</label>
+                        {{ form.guest_speaker }}
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Speaker Bio</label>
+                        {{ form.guest_speaker_bio }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logistics -->
+            <div>
+                <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Logistics</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Venue <span class="text-red-500">*</span></label>
+                        {{ form.venue }}
+                        {% if form.venue.errors %}<p class="text-red-500 text-xs mt-1">{{ form.venue.errors|join:", " }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Expected Attendees <span class="text-red-500">*</span></label>
+                        {{ form.expected_attendees }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Start Date &amp; Time <span class="text-red-500">*</span></label>
+                        {{ form.start_datetime }}
+                        {% if form.start_datetime.errors %}<p class="text-red-500 text-xs mt-1">{{ form.start_datetime.errors|join:", " }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">End Date &amp; Time <span class="text-red-500">*</span></label>
+                        {{ form.end_datetime }}
+                        {% if form.end_datetime.errors %}<p class="text-red-500 text-xs mt-1">{{ form.end_datetime.errors|join:", " }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Requested Budget (₹) <span class="text-red-500">*</span></label>
+                        {{ form.requested_budget }}
+                        {% if form.requested_budget.errors %}<p class="text-red-500 text-xs mt-1">{{ form.requested_budget.errors|join:", " }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Infrastructure Requirements -->
+            <div>
+                <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Infrastructure Requirements</h2>
+                <div class="space-y-4">
+                    <div class="flex items-start space-x-3">
+                        {{ form.transport_required }}
+                        <label class="text-sm font-medium text-gray-700">Transport Required</label>
+                    </div>
+                    <div class="ml-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Transport Details</label>
+                        {{ form.transport_details }}
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        {{ form.mess_required }}
+                        <label class="text-sm font-medium text-gray-700">Mess / Catering Required</label>
+                    </div>
+                    <div class="ml-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Mess Details</label>
+                        {{ form.mess_details }}
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        {{ form.maintenance_required }}
+                        <label class="text-sm font-medium text-gray-700">Maintenance Required</label>
+                    </div>
+                    <div class="ml-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Maintenance Details</label>
+                        {{ form.maintenance_details }}
+                    </div>
+                </div>
+            </div>
+
+            {% if form.non_field_errors %}
+            <div class="bg-red-50 border border-red-300 rounded-lg p-3">
+                <p class="text-red-700 text-sm">{{ form.non_field_errors|join:", " }}</p>
+            </div>
+            {% endif %}
+
+            <div class="flex space-x-3 pt-2">
+                <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg transition">
+                    {% if event %}Update & Resubmit{% else %}Submit for Approval{% endif %}
+                </button>
+                <a href="/events/dashboard/"
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-6 py-2.5 rounded-lg transition">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+<nav class="bg-blue-700 text-white shadow-lg">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <div class="flex items-center space-x-4">
+                <a href="/" class="flex items-center space-x-2">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span class="font-bold text-lg hidden sm:block">College Event Management</span>
+                    <span class="font-bold text-lg sm:hidden">CEMS</span>
+                </a>
+            </div>
+            <div class="flex items-center space-x-4">
+                {% if user.is_authenticated %}
+                <span class="hidden md:block text-sm text-blue-200">
+                    {{ user.get_full_name|default:user.username }}
+                    <span class="ml-1 px-2 py-0.5 bg-blue-500 rounded-full text-xs">{{ user.get_role_display }}</span>
+                </span>
+                <a href="/accounts/profile/" class="text-blue-200 hover:text-white text-sm">Profile</a>
+                <a href="/accounts/logout/" class="bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded-lg text-sm font-medium">
+                    Logout
+                </a>
+                {% else %}
+                <a href="/accounts/login/" class="text-blue-200 hover:text-white text-sm">Login</a>
+                <a href="/accounts/register/" class="bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm font-medium">
+                    Register
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</nav>

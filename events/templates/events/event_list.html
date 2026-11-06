@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}All Events{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <h1 class="text-2xl font-bold text-gray-900">All Published Events</h1>
+
+    {% if events %}
+    <div class="bg-white shadow rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                    <th class="text-left px-4 py-3 text-gray-600 font-medium">Event</th>
+                    <th class="text-left px-4 py-3 text-gray-600 font-medium">Type</th>
+                    <th class="text-left px-4 py-3 text-gray-600 font-medium">Date</th>
+                    <th class="text-left px-4 py-3 text-gray-600 font-medium">Venue</th>
+                    <th class="text-left px-4 py-3 text-gray-600 font-medium">Status</th>
+                    <th class="text-left px-4 py-3 text-gray-600 font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for event in events %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <a href="/events/{{ event.pk }}/" class="text-blue-600 hover:underline font-medium">{{ event.title }}</a>
+                        {% if event.guest_speaker %}
+                        <p class="text-xs text-gray-400 mt-0.5">Speaker: {{ event.guest_speaker }}</p>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">{{ event.get_event_type_display }}</span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">{{ event.start_datetime|date:"d M Y" }}</td>
+                    <td class="px-4 py-3 text-gray-600">{{ event.venue }}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                            {% if event.status == 'published' %}bg-green-100 text-green-800
+                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                            {{ event.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 space-x-2">
+                        <a href="/events/{{ event.pk }}/" class="text-blue-600 hover:underline text-xs">View</a>
+                        {% if request.user.role in 'hod,club_head,dean_academics,faculty' %}
+                        <a href="/reports/event/{{ event.pk }}/" class="text-green-600 hover:underline text-xs">Report</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
+        <p class="text-gray-500">No published events yet.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

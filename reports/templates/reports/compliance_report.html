@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Compliance Report</h1>
+            <p class="text-gray-500 text-sm mt-1">{{ event.title }}</p>
+        </div>
+        <div class="flex space-x-3">
+            <form method="post">
+                {% csrf_token %}
+                <button name="email_report" value="1" type="submit"
+                    class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    Email Report
+                </button>
+            </form>
+            <button onclick="window.print()"
+                class="inline-flex items-center bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                🖨️ Print
+            </button>
+        </div>
+    </div>
+
+    <!-- Event Summary -->
+    <div class="bg-white shadow rounded-2xl p-6">
+        <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Event Summary</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-5 text-sm">
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Start</p>
+                <p class="font-semibold text-gray-800">{{ event.start_datetime|date:"d M Y, H:i" }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">End</p>
+                <p class="font-semibold text-gray-800">{{ event.end_datetime|date:"d M Y, H:i" }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Venue</p>
+                <p class="font-semibold text-gray-800">{{ event.venue }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Type</p>
+                <p class="font-semibold text-gray-800">{{ event.get_event_type_display }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Requested Budget</p>
+                <p class="font-semibold text-gray-800">₹{{ report.requested_budget }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Approved Budget</p>
+                <p class="font-semibold text-green-700">₹{{ report.approved_budget }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Proposed by</p>
+                <p class="font-semibold text-gray-800">{{ event.proposed_by.get_full_name|default:event.proposed_by.username }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="bg-white shadow rounded-2xl p-5 text-center">
+            <p class="text-3xl font-bold text-blue-600">{{ report.registered_count }}</p>
+            <p class="text-gray-500 text-sm mt-1">Registered</p>
+        </div>
+        <div class="bg-white shadow rounded-2xl p-5 text-center">
+            <p class="text-3xl font-bold text-green-600">{{ report.checkin_count }}</p>
+            <p class="text-gray-500 text-sm mt-1">Checked In</p>
+        </div>
+        <div class="bg-white shadow rounded-2xl p-5 text-center">
+            <p class="text-3xl font-bold text-purple-600">{{ report.verified_count }}</p>
+            <p class="text-gray-500 text-sm mt-1">Feedback Submitted</p>
+        </div>
+    </div>
+
+    <!-- Feedback -->
+    <div class="bg-white shadow rounded-2xl p-6">
+        <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Feedback Summary</h2>
+        <div class="flex items-center space-x-6 mb-5">
+            <div class="text-center">
+                <p class="text-4xl font-bold text-yellow-500">{{ report.avg_rating }}</p>
+                <p class="text-gray-500 text-sm mt-1">Average Rating</p>
+                {% if report.avg_rating != 'No ratings yet' %}
+                <div class="flex justify-center mt-1 space-x-0.5">
+                    {% for i in "12345" %}
+                    <svg class="w-4 h-4 {% if forloop.counter <= report.avg_rating|floatformat:0|add:0 %}text-yellow-400{% else %}text-gray-300{% endif %}"
+                        fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                    </svg>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% if report.comments %}
+        <h3 class="text-sm font-semibold text-gray-600 mb-3">Comments</h3>
+        <ul class="space-y-2">
+            {% for comment in report.comments %}
+            <li class="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700">
+                "{{ comment }}"
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-gray-400 text-sm">No comments submitted yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Approval Timeline -->
+    <div class="bg-white shadow rounded-2xl p-6">
+        <h2 class="text-base font-semibold text-gray-700 mb-4 pb-2 border-b">Approval Timeline</h2>
+        {% if report.approval_stages %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="text-left px-3 py-2 text-gray-500 font-medium">Stage</th>
+                        <th class="text-left px-3 py-2 text-gray-500 font-medium">Approver</th>
+                        <th class="text-left px-3 py-2 text-gray-500 font-medium">Action</th>
+                        <th class="text-left px-3 py-2 text-gray-500 font-medium">Date</th>
+                        <th class="text-left px-3 py-2 text-gray-500 font-medium">Remark</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for stage in report.approval_stages %}
+                    <tr>
+                        <td class="px-3 py-2 font-medium text-gray-700">{{ stage.stage_number }}. {{ stage.stage_label }}</td>
+                        <td class="px-3 py-2 text-gray-600">{{ stage.approver }}</td>
+                        <td class="px-3 py-2">
+                            <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                                {% if stage.action == 'Approved' %}bg-green-100 text-green-800
+                                {% elif stage.action == 'Rejected' %}bg-red-100 text-red-800
+                                {% elif stage.action == 'Revision Required' %}bg-orange-100 text-orange-800
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {{ stage.action }}
+                            </span>
+                            {% if stage.revised_budget %}
+                            <span class="ml-2 text-xs text-blue-600">Budget: ₹{{ stage.revised_budget }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2 text-gray-500 text-xs">{{ stage.acted_at|date:"d M Y, H:i"|default:"Pending" }}</td>
+                        <td class="px-3 py-2 text-gray-500 text-xs">{{ stage.remark|default:"–" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-400 text-sm">No approval records.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

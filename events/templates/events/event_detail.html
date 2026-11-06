@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="bg-white shadow rounded-2xl overflow-hidden">
+        <div class="bg-blue-600 px-6 py-6 text-white">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center space-x-3 mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white">
+                            {{ event.get_event_type_display }}
+                        </span>
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if event.status == 'published' %}bg-green-200 text-green-900
+                            {% elif event.status == 'rejected' %}bg-red-200 text-red-900
+                            {% elif event.status == 'pending' %}bg-yellow-200 text-yellow-900
+                            {% elif event.status == 'revision_required' %}bg-orange-200 text-orange-900
+                            {% else %}bg-white/20 text-white{% endif %}">
+                            {{ event.get_status_display }}
+                        </span>
+                        {% if event.is_revision %}
+                        <span class="px-2 py-0.5 rounded-full text-xs bg-white/10 text-white">
+                            Rev. {{ event.revision_number }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <h1 class="text-2xl font-bold">{{ event.title }}</h1>
+                    <p class="text-blue-200 text-sm mt-1">
+                        Proposed by {{ event.proposed_by.get_full_name|default:event.proposed_by.username }}
+                        {% if event.department %} · {{ event.department }}{% endif %}
+                        {% if event.club_name %} · {{ event.club_name }}{% endif %}
+                    </p>
+                </div>
+                <div class="flex flex-col space-y-2 text-right">
+                    {% if request.user == event.proposed_by and event.status in 'draft,revision_required' %}
+                    <a href="/events/{{ event.pk }}/edit/"
+                        class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
+                        Edit
+                    </a>
+                    {% endif %}
+                    {% if event.status == 'published' and request.user == event.proposed_by %}
+                    <a href="/checkin/qr/{{ event.pk }}/"
+                        class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
+                        QR Code
+                    </a>
+                    {% endif %}
+                    {% if event.status in 'published,completed' %}
+                    <a href="/reports/event/{{ event.pk }}/"
+                        class="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
+                        Report
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Info Grid -->
+        <div class="p-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+                <div>
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Start</p>
+                    <p class="font-semibold text-gray-800 mt-1">{{ event.start_datetime|date:"d M Y" }}</p>
+                    <p class="text-sm text-gray-500">{{ event.start_datetime|date:"H:i" }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">End</p>
+                    <p class="font-semibold text-gray-800 mt-1">{{ event.end_datetime|date:"d M Y" }}</p>
+                    <p class="text-sm text-gray-500">{{ event.end_datetime|date:"H:i" }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Venue</p>
+                    <p class="font-semibold text-gray-800 mt-1">{{ event.venue }}</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Attendees</p>
+                    <p class="font-semibold text-gray-800 mt-1">{{ event.expected_attendees }} expected</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Requested Budget</p>
+                    <p class="font-semibold text-gray-800 mt-1">₹{{ event.requested_budget }}</p>
+                </div>
+                {% if event.approved_budget %}
+                <div>
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Approved Budget</p>
+                    <p class="font-semibold text-green-700 mt-1">₹{{ event.approved_budget }}</p>
+                </div>
+                {% endif %}
+                {% if event.guest_speaker %}
+                <div class="col-span-2">
+                    <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Guest Speaker</p>
+                    <p class="font-semibold text-gray-800 mt-1">{{ event.guest_speaker }}</p>
+                    {% if event.guest_speaker_bio %}
+                    <p class="text-sm text-gray-500 mt-1">{{ event.guest_speaker_bio }}</p>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">Description</h3>
+                <p class="text-gray-600 leading-relaxed">{{ event.description }}</p>
+            </div>
+
+            <!-- Infrastructure -->
+            {% if event.transport_required or event.mess_required or event.maintenance_required %}
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-gray-700 mb-3">Infrastructure Requirements</h3>
+                <div class="flex flex-wrap gap-3">
+                    {% if event.transport_required %}
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm">
+                        <span class="font-medium text-blue-800">Transport</span>
+                        {% if event.transport_details %}<p class="text-blue-600 mt-1 text-xs">{{ event.transport_details }}</p>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if event.mess_required %}
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm">
+                        <span class="font-medium text-orange-800">Mess / Catering</span>
+                        {% if event.mess_details %}<p class="text-orange-600 mt-1 text-xs">{{ event.mess_details }}</p>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if event.maintenance_required %}
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-sm">
+                        <span class="font-medium text-purple-800">Maintenance</span>
+                        {% if event.maintenance_details %}<p class="text-purple-600 mt-1 text-xs">{{ event.maintenance_details }}</p>{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Student Registration -->
+            {% if request.user.role == 'student' and event.status == 'published' %}
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                {% if registration %}
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                        <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-medium text-gray-800">You're registered as <span class="text-blue-600">{{ registration.get_role_display }}</span></p>
+                        <p class="text-sm text-gray-500">Registered {{ registration.registered_at|date:"d M Y" }}</p>
+                    </div>
+                </div>
+                {% elif registration_form %}
+                <form method="post" action="/events/{{ event.pk }}/register/" class="flex items-end space-x-3">
+                    {% csrf_token %}
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Register as</label>
+                        {{ registration_form.role }}
+                    </div>
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition">
+                        Register
+                    </button>
+                </form>
+                {% else %}
+                <a href="/events/{{ event.pk }}/register/"
+                    class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition">
+                    Register for Event
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Approval Timeline -->
+    <div class="bg-white shadow rounded-2xl p-6">
+        <h2 class="text-lg font-bold text-gray-900 mb-5">Approval Timeline</h2>
+        {% if stages %}
+        <ol class="relative border-l border-gray-200 ml-3 space-y-6">
+            {% for stage in stages %}
+            <li class="ml-6">
+                <div class="absolute -left-3 flex items-center justify-center w-6 h-6 rounded-full ring-4 ring-white
+                    {% if stage.action == 'approved' %}bg-green-500
+                    {% elif stage.action == 'rejected' %}bg-red-500
+                    {% elif stage.action == 'revision_required' %}bg-orange-500
+                    {% else %}bg-gray-300{% endif %}">
+                    {% if stage.action == 'approved' %}
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    {% elif stage.action == 'rejected' %}
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    {% elif stage.action == 'pending' %}
+                    <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+                    {% else %}
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 9v4m0 4h.01"/>
+                    </svg>
+                    {% endif %}
+                </div>
+                <div class="ml-2">
+                    <div class="flex items-center space-x-3">
+                        <h3 class="font-semibold text-gray-800">Stage {{ stage.stage_number }}: {{ stage.get_stage_number_display }}</h3>
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                            {% if stage.action == 'approved' %}bg-green-100 text-green-800
+                            {% elif stage.action == 'rejected' %}bg-red-100 text-red-800
+                            {% elif stage.action == 'revision_required' %}bg-orange-100 text-orange-800
+                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                            {{ stage.get_action_display }}
+                        </span>
+                    </div>
+                    {% if stage.approver %}
+                    <p class="text-sm text-gray-500 mt-0.5">By {{ stage.approver.get_full_name|default:stage.approver.username }}</p>
+                    {% endif %}
+                    {% if stage.acted_at %}
+                    <p class="text-xs text-gray-400">{{ stage.acted_at|date:"d M Y, H:i" }}</p>
+                    {% endif %}
+                    {% if stage.remark %}
+                    <div class="mt-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600">
+                        {{ stage.remark }}
+                    </div>
+                    {% endif %}
+                    {% if stage.revised_budget %}
+                    <p class="text-sm text-blue-600 mt-1">Budget revised to ₹{{ stage.revised_budget }}{% if stage.budget_revision_reason %} – {{ stage.budget_revision_reason }}{% endif %}</p>
+                    {% endif %}
+                    {% if stage.action == 'pending' and request.user.is_approver %}
+                    <a href="/events/{{ event.pk }}/approve/"
+                        class="inline-block mt-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition">
+                        Take Action
+                    </a>
+                    {% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <p class="text-gray-400 text-sm">No approval stages recorded yet.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
