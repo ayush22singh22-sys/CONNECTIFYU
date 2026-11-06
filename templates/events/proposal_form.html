@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_edit %}Revise Event Proposal{% else %}New Event Proposal{% endif %} - CEMS{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-6">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        
+        <!-- Header -->
+        <div class="mb-6 pb-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-black text-slate-900">
+                    {% if is_edit %}
+                        Revise Proposal: <span class="text-brand-600">{{ proposal.title }}</span>
+                    {% else %}
+                        Submit New Event Proposal
+                    {% endif %}
+                </h1>
+                <p class="text-xs text-slate-500 mt-1">
+                    Proposals are automatically routed through the 5-step approval chain (Unit Head &rarr; HR &rarr; Dean of Research &rarr; Dean of Accounts &rarr; Dean of Academics).
+                </p>
+            </div>
+            <a href="{% url 'dashboard' %}" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">
+                <i class="fa-solid fa-arrow-left mr-1"></i>Cancel
+            </a>
+        </div>
+
+        {% if is_edit and latest_log %}
+            <!-- Prominent Revision Remarks Box -->
+            <div class="mb-8 p-5 bg-amber-50 border-2 border-amber-300 rounded-2xl">
+                <div class="flex items-center space-x-2 text-amber-800 font-bold text-sm mb-1">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+                    <span>Revision Requested by: {{ latest_log.approver.get_full_name|default:latest_log.approver.username }} ({{ latest_log.stage_name }})</span>
+                </div>
+                <p class="text-xs text-amber-900 font-medium bg-white p-3 rounded-xl border border-amber-200 shadow-inner mt-2">
+                    "{{ latest_log.remarks }}"
+                </p>
+                <p class="text-[11px] text-amber-700 mt-2">
+                    &bull; Update the fields below and provide resubmission notes. When submitted, the proposal will restart the chain tagged visibly as <strong>Revision Cycle {{ proposal.revision_count|add:1 }}</strong>.
+                </p>
+            </div>
+        {% endif %}
+
+        <form method="POST" class="space-y-6">
+            {% csrf_token %}
+
+            <!-- Section 1: Basic Event Details -->
+            <div class="space-y-4">
+                <h2 class="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center">
+                    <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">1</span>
+                    Basic Event Information
+                </h2>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Event Title *</label>
+                    <input type="text" name="title" required value="{{ proposal.title|default:'' }}" 
+                           placeholder="e.g. Annual Symposium on Autonomous Robotics" 
+                           class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Event Description & Objectives *</label>
+                    <textarea name="description" rows="3" required placeholder="Detailed objective, target audience, and expected outcomes..."
+                              class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.description|default:'' }}</textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Organizing Unit (Dynamic Routing) *</label>
+                        <select name="organizing_unit" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                            {% for unit in units %}
+                                <option value="{{ unit.id }}" {% if proposal.organizing_unit_id == unit.id %}selected{% endif %}>
+                                    {{ unit.name }} [{{ unit.get_unit_type_display }}] (Head: {{ unit.head.get_full_name|default:unit.head.username|default:'Unassigned' }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-[11px] text-slate-400 mt-1">Stage 1 approver dynamically resolves to this unit's HOD or Club President.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Co-Coordinator Details *</label>
+                        <input type="text" name="co_coordinator" required value="{{ proposal.co_coordinator|default:'' }}"
+                               placeholder="e.g. Dr. Ada Lovelace (CS Dept, ext 4402)"
+                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Keynote / Guest Speaker Profile *</label>
+                    <input type="text" name="guest_speaker" required value="{{ proposal.guest_speaker|default:'' }}"
+                           placeholder="e.g. Dr. Yann LeCun, Chief AI Scientist at Meta"
+                           class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                    <p class="text-[11px] text-slate-400 mt-1">Vetted by the Dean of Research in Stage 3.</p>
+                </div>
+            </div>
+
+            <!-- Section 2: Financials & Logistics Schedule -->
+            <div class="space-y-4 pt-4 border-t border-slate-100">
+                <h2 class="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center">
+                    <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">2</span>
+                    Budget, Venue & Schedule
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Requested Budget ($) *</label>
+                        <input type="number" step="0.01" name="requested_budget" required value="{{ proposal.requested_budget|default:'1000.00' }}"
+                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                        <p class="text-[11px] text-slate-400 mt-1">Subject to Dean of Accounts adjustment in Stage 4.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Expected Attendees *</label>
+                        <input type="number" name="expected_attendees" required value="{{ proposal.expected_attendees|default:'100' }}"
+                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Venue / Auditorium *</label>
+                        <input type="text" name="venue" required value="{{ proposal.venue|default:'' }}"
+                               placeholder="e.g. APJ Kalam Auditorium"
+                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Start Date & Time *</label>
+                        <input type="datetime-local" name="start_date" required 
+                               value="{{ proposal.start_date|date:'Y-m-d\TH:i' }}"
+                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">End Date & Time *</label>
+                        <input type="datetime-local" name="end_date" required 
+                               value="{{ proposal.end_date|date:'Y-m-d\TH:i' }}"
+                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Campus Operational Logistics -->
+            <div class="space-y-4 pt-4 border-t border-slate-100">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center">
+                        <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">3</span>
+                        Campus Logistics Requirements (Auto-Dispatched on Approval)
+                    </h2>
+                    <span class="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold">
+                        Step 5 Automated Hook
+                    </span>
+                </div>
+                <p class="text-xs text-slate-500">
+                    Once the Dean of Academics grants final clearance, the system automatically emails these exact specifications to the college logistics offices.
+                </p>
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">
+                            <i class="fa-solid fa-utensils text-slate-400 mr-1.5"></i>Mess & Catering Services
+                        </label>
+                        <textarea name="mess_requirements" rows="2" placeholder="e.g. Lunch for 150 guests + tea and biscuits for 2 breaks..."
+                                  class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.mess_requirements|default:'' }}</textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">
+                            <i class="fa-solid fa-bus text-slate-400 mr-1.5"></i>Transport & Fleet Dispatch
+                        </label>
+                        <textarea name="transport_requirements" rows="2" placeholder="e.g. Airport pickup for guest speaker at 9:00 AM, shuttle bus for inter-campus attendees..."
+                                  class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.transport_requirements|default:'' }}</textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">
+                            <i class="fa-solid fa-wrench text-slate-400 mr-1.5"></i>Auditorium, AV & Maintenance Setup
+                        </label>
+                        <textarea name="maintenance_requirements" rows="2" placeholder="e.g. Projector, podium mic, 2 collar mics, stage spotlight, AC turned on 1 hr prior..."
+                                  class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.maintenance_requirements|default:'' }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            {% if is_edit %}
+                <!-- Resubmission Notes -->
+                <div class="pt-4 border-t border-slate-100">
+                    <label class="block text-xs font-bold text-amber-900 mb-1">Resubmission Changes Summary *</label>
+                    <textarea name="resubmission_notes" required rows="2" placeholder="Describe the corrections made to address the previous reviewer's remarks..."
+                              class="w-full px-3.5 py-2.5 bg-amber-50/50 border border-amber-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white focus:outline-none"></textarea>
+                </div>
+            {% endif %}
+
+            <!-- Actions -->
+            <div class="pt-6 border-t border-slate-200 flex items-center justify-end space-x-3">
+                <a href="{% url 'dashboard' %}" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm rounded-xl transition">
+                    Cancel
+                </a>
+                <button type="submit" class="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-brand-500/25 transition">
+                    {% if is_edit %}
+                        <i class="fa-solid fa-paper-plane mr-1.5"></i>Resubmit to Approval Chain
+                    {% else %}
+                        <i class="fa-solid fa-paper-plane mr-1.5"></i>Submit Proposal for Stage 1 Review
+                    {% endif %}
+                </button>
+            </div>
+        </form>
+
+    </div>
+</div>
+{% endblock %}

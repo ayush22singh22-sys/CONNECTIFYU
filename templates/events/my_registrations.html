@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block title %}My Event Registrations - CEMS{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+            <h1 class="text-2xl font-black text-slate-900">My Registrations & Attendance</h1>
+            <p class="text-xs text-slate-500 mt-1">
+                Scan event QR codes, submit your anti-proxy verification selfie, and complete feedback to verify your attendance.
+            </p>
+        </div>
+        <a href="{% url 'student_events' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs rounded-xl shadow-sm transition">
+            <i class="fa-solid fa-plus mr-1.5"></i>Browse More Events
+        </a>
+    </div>
+
+    <!-- Registrations List -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {% if registrations %}
+            <div class="divide-y divide-slate-100">
+                {% for reg in registrations %}
+                    <div class="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50/60 transition">
+                        
+                        <div class="space-y-1.5 max-w-xl">
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-brand-700 border border-indigo-100">
+                                    {{ reg.get_role_display }}
+                                </span>
+                                <span class="text-xs text-slate-400 font-medium">
+                                    Registered: {{ reg.registered_at|date:"M d, Y" }}
+                                </span>
+                            </div>
+
+                            <h3 class="text-base font-extrabold text-slate-900">
+                                {{ reg.event.title }}
+                            </h3>
+
+                            <div class="text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                <div><i class="fa-solid fa-building text-slate-400 mr-1.5"></i>{{ reg.event.organizing_unit.name }}</div>
+                                <div><i class="fa-solid fa-location-dot text-slate-400 mr-1.5"></i>{{ reg.event.venue }}</div>
+                                <div><i class="fa-solid fa-clock text-slate-400 mr-1.5"></i>{{ reg.event.start_date|date:"M d, Y h:i A" }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Status & Action Pillar -->
+                        <div class="flex flex-col sm:items-end gap-2 w-full sm:w-auto">
+                            <!-- Status Pill -->
+                            <div>
+                                {% if reg.status == 'VERIFIED' %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        <i class="fa-solid fa-circle-check mr-1.5"></i>Attendance Verified
+                                    </span>
+                                {% elif reg.status == 'CHECKED_IN' %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                        <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>Checked-In (Pending Feedback)
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                                        <i class="fa-solid fa-ticket mr-1.5"></i>Registered (Not Checked In)
+                                    </span>
+                                {% endif %}
+                            </div>
+
+                            <!-- Next Action Buttons -->
+                            <div class="flex items-center gap-2">
+                                {% if reg.status == 'REGISTERED' %}
+                                    <a href="{% url 'checkin' %}?token={{ reg.event.qr_checkin_token }}" 
+                                       class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center">
+                                        <i class="fa-solid fa-camera mr-1.5"></i>Scan QR & Take Selfie
+                                    </a>
+                                {% elif reg.status == 'CHECKED_IN' %}
+                                    <a href="{% url 'event_feedback' reg.id %}" 
+                                       class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center">
+                                        <i class="fa-solid fa-star mr-1.5"></i>Complete Feedback to Verify
+                                    </a>
+                                {% elif reg.status == 'VERIFIED' %}
+                                    <span class="text-xs text-slate-400 font-medium">
+                                        <i class="fa-solid fa-certificate text-emerald-500 mr-1"></i>Official record compliant
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="p-12 text-center">
+                <i class="fa-solid fa-ticket text-slate-300 text-4xl mb-3"></i>
+                <h3 class="text-base font-bold text-slate-800">No event registrations found</h3>
+                <p class="text-xs text-slate-500 mt-1 mb-4">Browse campus events and sign up to participate or volunteer.</p>
+                <a href="{% url 'student_events' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-xs font-semibold rounded-xl">
+                    Browse Events
+                </a>
+            </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

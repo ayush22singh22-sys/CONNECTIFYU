@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign In - College Event Management System{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-8">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+        
+        <!-- Standard Login Form -->
+        <div class="md:col-span-5 bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold text-slate-900">Welcome to CEMS</h1>
+                <p class="text-sm text-slate-500 mt-1">Sign in with your campus credentials</p>
+            </div>
+
+            <form method="POST" action="{% url 'login' %}" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Username</label>
+                    <input type="text" name="username" required 
+                           class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none transition" 
+                           placeholder="e.g. faculty or student1">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
+                    <input type="password" name="password" required 
+                           class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none transition"
+                           placeholder="••••••••">
+                    <p class="text-[11px] text-slate-400 mt-1">Default demo password: <code class="text-brand-600 font-mono">password123</code></p>
+                </div>
+
+                <button type="submit" class="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl text-sm shadow-md shadow-brand-500/25 transition">
+                    Sign In
+                </button>
+            </form>
+
+            <div class="mt-6 pt-6 border-t border-slate-200 text-center text-xs text-slate-500">
+                New student? <a href="{% url 'register' %}" class="font-semibold text-brand-600 hover:text-brand-700">Create an account</a>
+            </div>
+        </div>
+
+        <!-- Quick Demo Profiles Showcase (Instant Presentation Access) -->
+        <div class="md:col-span-7 bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-8 rounded-2xl shadow-xl border border-indigo-800">
+            <div class="flex items-center space-x-2 mb-2">
+                <span class="px-2.5 py-1 bg-amber-400 text-slate-950 font-extrabold text-[10px] rounded uppercase tracking-wider">
+                    Presentation Demo
+                </span>
+                <span class="text-xs text-indigo-200 font-medium">Click any role to test end-to-end</span>
+            </div>
+            <h2 class="text-xl font-bold mb-4 text-white">One-Click Role Demonstration</h2>
+            <p class="text-xs text-indigo-200/80 mb-6 leading-relaxed">
+                Experience the 5-stage approval chain and student attendance workflow without manual registration. Click any persona below to log in directly:
+            </p>
+
+            <div class="space-y-4">
+                <!-- Proposers -->
+                <div>
+                    <div class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-2">1. Event Proposers</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <a href="{% url 'switch_user' 'faculty' %}" class="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold"><i class="fa-solid fa-chalkboard-user"></i></div>
+                            <div>
+                                <div class="text-xs font-bold text-white">Prof. Alan Turing</div>
+                                <div class="text-[10px] text-indigo-200">Faculty (CS Dept)</div>
+                            </div>
+                        </a>
+                        <a href="{% url 'switch_user' 'club_head' %}" class="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold"><i class="fa-solid fa-robot"></i></div>
+                            <div>
+                                <div class="text-xs font-bold text-white">Alex Johnson</div>
+                                <div class="text-[10px] text-indigo-200">Robotics Club Lead</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 5-Stage Approvers -->
+                <div>
+                    <div class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-2">2. The 5-Stage Approval Chain</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <a href="{% url 'switch_user' 'hod_cs' %}" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2.5">
+                            <span class="w-6 h-6 rounded bg-amber-500/80 text-white text-[11px] flex items-center justify-center font-bold">1</span>
+                            <div>
+                                <div class="text-xs font-semibold text-white">Dr. Grace Hopper</div>
+                                <div class="text-[10px] text-indigo-200">HOD Computer Science</div>
+                            </div>
+                        </a>
+                        <a href="{% url 'switch_user' 'hr_admin' %}" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2.5">
+                            <span class="w-6 h-6 rounded bg-amber-500/80 text-white text-[11px] flex items-center justify-center font-bold">2</span>
+                            <div>
+                                <div class="text-xs font-semibold text-white">Sarah Jenkins</div>
+                                <div class="text-[10px] text-indigo-200">HR Reviewer</div>
+                            </div>
+                        </a>
+                        <a href="{% url 'switch_user' 'dean_research' %}" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2.5">
+                            <span class="w-6 h-6 rounded bg-amber-500/80 text-white text-[11px] flex items-center justify-center font-bold">3</span>
+                            <div>
+                                <div class="text-xs font-semibold text-white">Dr. Richard Feynman</div>
+                                <div class="text-[10px] text-indigo-200">Dean of Research</div>
+                            </div>
+                        </a>
+                        <a href="{% url 'switch_user' 'dean_accounts' %}" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2.5">
+                            <span class="w-6 h-6 rounded bg-amber-500/80 text-white text-[11px] flex items-center justify-center font-bold">4</span>
+                            <div>
+                                <div class="text-xs font-semibold text-white">Dr. Milton Friedman</div>
+                                <div class="text-[10px] text-indigo-200">Dean of Accounts (Budget)</div>
+                            </div>
+                        </a>
+                        <a href="{% url 'switch_user' 'dean_academics' %}" class="col-span-1 sm:col-span-2 p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2.5">
+                            <span class="w-6 h-6 rounded bg-emerald-500 text-white text-[11px] flex items-center justify-center font-bold">5</span>
+                            <div>
+                                <div class="text-xs font-semibold text-white">Dr. APJ Kalam</div>
+                                <div class="text-[10px] text-indigo-200">Dean of Academics / Director (Final Clearance & Logistics Trigger)</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Students -->
+                <div>
+                    <div class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-2">3. Student Participants</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <a href="{% url 'switch_user' 'student1' %}" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2">
+                            <div class="w-7 h-7 rounded-full bg-emerald-500/30 text-emerald-300 flex items-center justify-center text-xs"><i class="fa-solid fa-user-graduate"></i></div>
+                            <div>
+                                <div class="text-xs font-semibold text-white">John Doe</div>
+                                <div class="text-[10px] text-indigo-200">CS Student (Roll: CS21B001)</div>
+                            </div>
+                        </a>
+                        <a href="{% url 'switch_user' 'student2' %}" class="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl border border-white/10 transition flex items-center space-x-2">
+                            <div class="w-7 h-7 rounded-full bg-emerald-500/30 text-emerald-300 flex items-center justify-center text-xs"><i class="fa-solid fa-user-graduate"></i></div>
+                            <div>
+                                <div class="text-xs font-semibold text-white">Jane Smith</div>
+                                <div class="text-[10px] text-indigo-200">ME Student (Roll: ME21B015)</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
