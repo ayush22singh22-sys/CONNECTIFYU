@@ -173,3 +173,186 @@ class EventLifecycleTestCase(TestCase):
         res = self.client.get('/proposals/new/')
         self.assertEqual(res.status_code, 302)
         self.assertEqual(res.url, '/')
+
+    def test_student_single_registration_constraint(self):
+        """Requirement 1: Students can register only once; duplicate/role change blocked."""
+        now = timezone.now()
+        proposal = EventProposal.objects.create(
+            title='Web3 & Cloud Symposium',
+            description='Advanced seminar.',
+            proposer=self.faculty,
+            organizing_unit=self.dept_cse,
+            co_coordinator='Prof. S. Iyer',
+            guest_speaker='Dr. Tech',
+            requested_budget=30000.00,
+            approved_budget=30000.00,
+            start_date=now + timedelta(days=5),
+            end_date=now + timedelta(days=6),
+            venue='Auditorium 2',
+            status='APPROVED'
+        )
+
+        # 1. Student registers for the first time as PARTICIPANT
+        self.client.login(username='student_user', password='password123')
+        res = self.client.post(f'/events/{proposal.id}/register/', {'role': 'PARTICIPANT'})
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(EventRegistration.objects.filter(event=proposal, student=self.student).count(), 1)
+        reg = EventRegistration.objects.get(event=proposal, student=self.student)
+        self.assertEqual(reg.role, 'PARTICIPANT')
+
+        # 2. Student attempts second registration (e.g. as VOLUNTEER) - should be blocked
+        res2 = self.client.post(f'/events/{proposal.id}/register/', {'role': 'VOLUNTEER'})
+        self.assertEqual(res2.status_code, 302)
+        # Total registrations must still be 1, and role must remain unchanged
+        self.assertEqual(EventRegistration.objects.filter(event=proposal, student=self.student).count(), 1)
+        reg.refresh_from_db()
+        self.assertEqual(reg.role, 'PARTICIPANT')
+
+        # 3. Non-student (Faculty) attempts to register - should be blocked
+        self.client.login(username='faculty_user', password='password123')
+        res3 = self.client.post(f'/events/{proposal.id}/register/', {'role': 'PARTICIPANT'})
+        self.assertEqual(res3.status_code, 302)
+        self.assertEqual(EventRegistration.objects.filter(event=proposal, student=self.faculty).count(), 0)
+
+    def test_live_qr_restricted_to_organizer_only(self):
+        """Requirement 3: Only the event proposer (organizer) can open live QR screen & API."""
+        now = timezone.now()
+        proposal = EventProposal.objects.create(
+            title='Autonomous Drones Workshop',
+            description='Hands on drone flying.',
+            proposer=self.faculty,
+            organizing_unit=self.dept_cse,
+            co_coordinator='Prof. K. Verma',
+            guest_speaker='Drone Specialist',
+            requested_budget=45000.00,
+            approved_budget=45000.00,
+            start_date=now + timedelta(days=3),
+            end_date=now + timedelta(days=4),
+            venue='Open Ground',
+            status='APPROVED'
+        )
+
+        # 1. Non-organizer faculty attempts to open live QR
+        other_faculty = User.objects.create_user(username='other_faculty', password='password123')
+        UserProfile.objects.create(user=other_faculty, role='FACULTY', department='ECE')
+        self.client.login(username='other_faculty', password='password123')
+
+        res_unauthorized = self.client.get(f'/events/{proposal.id}/live/')
+        self.assertEqual(res_unauthorized.status_code, 302)
+        self.assertIn(f'/proposals/{proposal.id}/', res_unauthorized.url)
+
+        # API also blocked for non-organizer
+        api_unauthorized = self.client.get(f'/events/{proposal.id}/rotating-qr-api/')
+        self.assertEqual(api_unauthorized.status_code, 403)
+
+        # Student also blocked
+        self.client.login(username='student_user', password='password123')
+        res_student = self.client.get(f'/events/{proposal.id}/live/')
+        self.assertEqual(res_student.status_code, 302)
+
+        # 2. Designated organizer (self.faculty) can open live QR & poll API
+        self.client.login(username='faculty_user', password='password123')
+        res_authorized = self.client.get(f'/events/{proposal.id}/live/')
+        self.assertEqual(res_authorized.status_code, 200)
+
+        api_authorized = self.client.get(f'/events/{proposal.id}/rotating-qr-api/')
+        self.assertEqual(api_authorized.status_code, 200)
+        data = api_authorized.json()
+        self.assertIn('token', data)
+        self.assertIn('seconds_left', data)
+
+    def test_department_wise_hod_approval_chains(self):
+        """Requirement 5: Department-specific HOD resolution in default and custom chains."""
+        dept_ece = OrganizingUnit.objects.create(
+            name='Department of Electronics & Communication Engineering',
+            unit_type='DEPARTMENT'
+        )
+        dept_mech = OrganizingUnit.objects.create(
+            name='Department of Mechanical Engineering',
+            unit_type='DEPARTMENT'
+        )
+
+        # 1. CSE Department event gets HOD_CSE
+        chain_cse = get_default_chain('ACADEMIC', unit_id=self.dept_cse.id)
+        self.assertEqual(chain_cse[0]['role'], 'HOD_CSE')
+        self.assertIn('Computer Science', chain_cse[0]['title'])
+
+        # 2. ECE Department event gets HOD_ECE
+        chain_ece = get_default_chain('ACADEMIC', unit_id=dept_ece.id)
+        self.assertEqual(chain_ece[0]['role'], 'HOD_ECE')
+        self.assertIn('Electronics', chain_ece[0]['title'])
+
+        # 3. Mechanical Department event gets HOD_MECH
+        chain_mech = get_default_chain('ACADEMIC', unit_id=dept_mech.id)
+        self.assertEqual(chain_mech[0]['role'], 'HOD_MECH')
+        self.assertIn('Mechanical', chain_mech[0]['title'])
+
+        # 4. Mandatory tail must be in all chains: Dean Finance, Dean Academics, Director
+        mandatory_roles = [st['role'] for st in chain_cse[-3:]]
+        self.assertEqual(mandatory_roles, ['DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'])
+
+        # 5. Custom chain with explicit department HODs
+        custom_chain = get_default_chain('CUSTOM', unit_id=dept_ece.id, custom_roles=['HOD_ECE', 'REGISTRAR'])
+        roles = [st['role'] for st in custom_chain]
+        self.assertEqual(roles, ['HOD_ECE', 'REGISTRAR', 'DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'])
+
+    def test_event_public_detail_view_and_organizer_roster(self):
+        """Requirements 2 & 4: Public description view & Organizer roster view."""
+        now = timezone.now()
+        proposal = EventProposal.objects.create(
+            title='VLSI Design Conclave',
+            description='Semiconductor design bootcamp.',
+            proposer=self.faculty,
+            organizing_unit=self.dept_cse,
+            co_coordinator='Prof. S. Sharma',
+            guest_speaker='Dr. Anand Kumar',
+            requested_budget=50000.00,
+            approved_budget=50000.00,
+            start_date=now + timedelta(days=4),
+            end_date=now + timedelta(days=5),
+            venue='Seminar Hall 1',
+            status='APPROVED'
+        )
+
+        # Create registration & feedback
+        reg = EventRegistration.objects.create(
+            event=proposal,
+            student=self.student,
+            role='PARTICIPANT',
+            status='VERIFIED',
+            checked_in_at=now,
+            selfie_image='data:image/jpeg;base64,sample'
+        )
+        EventFeedback.objects.create(
+            registration=reg,
+            rating_overall=5,
+            rating_content=5,
+            rating_speaker=5,
+            comments='Inspiring keynote lecture!'
+        )
+
+        # 1. Public detail view accessible by student
+        self.client.login(username='student_user', password='password123')
+        res_public = self.client.get(f'/events/{proposal.id}/details/')
+        self.assertEqual(res_public.status_code, 200)
+        self.assertContains(res_public, 'VLSI Design Conclave')
+        self.assertContains(res_public, 'You are registered for this event!')
+
+        # 2. Public detail view accessible by faculty (shows campus entity view)
+        self.client.login(username='hod_user', password='password123')
+        res_fac = self.client.get(f'/events/{proposal.id}/details/')
+        self.assertEqual(res_fac.status_code, 200)
+        self.assertContains(res_fac, 'General Campus Entity View')
+
+        # 3. Organizer proposal detail view displays Roster & Attendance stats
+        self.client.login(username='faculty_user', password='password123')
+        res_detail = self.client.get(f'/proposals/{proposal.id}/')
+        self.assertEqual(res_detail.status_code, 200)
+        self.assertIn('all_registrations', res_detail.context)
+        self.assertIn('attended_students', res_detail.context)
+        self.assertIn('roster_stats', res_detail.context)
+        self.assertEqual(res_detail.context['roster_stats']['total_registered'], 1)
+        self.assertEqual(res_detail.context['roster_stats']['total_attended'], 1)
+        self.assertEqual(res_detail.context['roster_stats']['total_verified'], 1)
+        self.assertContains(res_detail, 'Student Registration & Attendance Audit Roster')
+        self.assertContains(res_detail, 'Inspiring keynote lecture!')

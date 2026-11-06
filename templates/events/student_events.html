@@ -70,27 +70,29 @@
                     </div>
                 </div>
 
-                <!-- Card Footer / Registration Action -->
+                <!-- Card Footer / Registration & Details Action -->
                 <div class="p-4 bg-slate-50 border-t border-slate-100">
                     {% if user.profile.role == 'STUDENT' %}
-                        <!-- Registration Form for Students -->
-                        <form method="POST" action="{% url 'event_register' event.id %}" class="flex items-center gap-2">
-                            {% csrf_token %}
-                            <select name="role" class="px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-brand-500 focus:outline-none flex-grow">
-                                <option value="PARTICIPANT">Participant</option>
-                                <option value="VOLUNTEER">Student Volunteer</option>
-                                <option value="VIEWER">Audience / Viewer</option>
-                            </select>
-                            <button type="submit" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition whitespace-nowrap">
-                                Register
-                            </button>
-                        </form>
+                        <!-- Requirement 1 & 4: Registered badge or Link to Detailed Registration Page -->
+                        <div class="flex items-center justify-between gap-2">
+                            <a href="{% url 'event_public_detail' event.id %}" class="w-full flex items-center justify-center px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition">
+                                <i class="fa-solid fa-file-lines mr-1.5"></i>View Details & Register
+                            </a>
+                        </div>
                     {% else %}
+                        <!-- Requirement 3 & 4: General campus view without QR leakage -->
                         <div class="flex items-center justify-between text-xs">
                             <span class="text-slate-500 font-medium">Capacity: {{ event.expected_attendees }} attendees</span>
-                            <a href="{% url 'live_event' event.id %}" class="font-bold text-brand-600 hover:text-brand-700 flex items-center">
-                                Open Live QR <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
-                            </a>
+                            <div class="flex items-center gap-2">
+                                {% if event.proposer == user or user.is_superuser %}
+                                    <a href="{% url 'live_event' event.id %}" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold rounded-lg border border-emerald-200 flex items-center">
+                                        <i class="fa-solid fa-qrcode mr-1"></i>QR
+                                    </a>
+                                {% endif %}
+                                <a href="{% url 'event_public_detail' event.id %}" class="font-bold text-brand-600 hover:text-brand-700 flex items-center">
+                                    View Details <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
+                                </a>
+                            </div>
                         </div>
                     {% endif %}
                 </div>

@@ -230,10 +230,18 @@ class EventProposal(models.Model):
 
         user_role = user.profile.role
 
-        if current_role == 'HOD':
+        if current_role == 'HOD_CSE':
+            return user.username == 'hod_cse' or (user_role == 'HOD' and ('Computer' in user.profile.department or 'CSE' in user.profile.department))
+        elif current_role == 'HOD_ECE':
+            return user.username == 'hod_ece' or (user_role == 'HOD' and ('Electronics' in user.profile.department or 'ECE' in user.profile.department))
+        elif current_role == 'HOD_MECH':
+            return user.username == 'hod_mech' or (user_role == 'HOD' and ('Mechanical' in user.profile.department or 'Mech' in user.profile.department))
+        elif current_role == 'HOD':
             return (user_role == 'HOD' and (self.organizing_unit.head == user or self.organizing_unit.unit_type == 'DEPARTMENT'))
-        elif current_role == 'CLUB_HEAD':
-            return (user_role in ['CLUB_HEAD', 'FACULTY'] and (self.organizing_unit.head == user or self.organizing_unit.unit_type == 'CLUB'))
+        elif current_role in ['CLUB_HEAD', 'CLUB_ROBOTICS']:
+            return user.username in ['club_lead', 'club_cultural'] or (user_role in ['CLUB_HEAD', 'FACULTY'] and (self.organizing_unit.head == user or self.organizing_unit.unit_type == 'CLUB'))
+        elif current_role == 'CLUB_CULTURAL':
+            return user.username == 'club_cultural' or user_role == 'CLUB_HEAD'
         elif current_role == 'REGISTRAR':
             return user_role == 'REGISTRAR'
         elif current_role == 'DEAN_RESEARCH':

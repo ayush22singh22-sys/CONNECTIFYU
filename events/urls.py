@@ -21,6 +21,7 @@ urlpatterns = [
 
     # Student Event Discovery & Registration
     path('events/', views.student_events_view, name='student_events'),
+    path('events/<int:proposal_id>/details/', views.event_public_detail_view, name='event_public_detail'),
     path('events/<int:proposal_id>/register/', views.event_register_view, name='event_register'),
     path('my-registrations/', views.my_registrations_view, name='my_registrations'),
 

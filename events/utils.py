@@ -2,13 +2,31 @@ import io
 import base64
 import qrcode
 from django.core.mail import send_mail
-from .models import LogisticsNotification
+from .models import LogisticsNotification, OrganizingUnit
 
 
-def get_default_chain(chain_type, custom_roles=None):
+ROLE_DESCRIPTIONS = {
+    'HOD_CSE': 'HOD - Computer Science & Engineering (Dr. K. V. Ramanathan)',
+    'HOD_ECE': 'HOD - Electronics & Communication Engineering (Dr. Sunita Kulkarni)',
+    'HOD_MECH': 'HOD - Mechanical Engineering (Dr. Vikramaditya Rathore)',
+    'HOD': 'Head of Department (Organizing Unit HOD)',
+    'CLUB_HEAD': 'Faculty Advisor / Club In-Charge',
+    'CLUB_ROBOTICS': 'Faculty Advisor - Robotics & Automation Society (Prof. Priya Nair)',
+    'CLUB_CULTURAL': 'Faculty Advisor - Cultural Affairs Committee (Prof. Amit Trivedi)',
+    'REGISTRAR': 'Registrar / Establishment Section (Smt. Sunita Deshmukh)',
+    'DEAN_RESEARCH': 'Dean of Research & Consultancy (Dr. P. Venkatraman)',
+    'DEAN_STUDENT_WELFARE': 'Dean of Student Welfare (Dr. Alok Sen)',
+    'DEAN_ACCOUNTS': 'Dean of Finance & Accounts (Dr. Suresh Chandra) - Mandatory',
+    'DEAN_ACADEMICS': 'Dean of Academic Affairs (Dr. Meenakshi Sundaram) - Mandatory',
+    'DIRECTOR': 'Director of the Institute (Dr. R. Chidambaram) - Mandatory Clearance',
+}
+
+
+def get_default_chain(chain_type, unit_id=None, custom_roles=None):
     """
     Returns the ordered approval stages list for an event proposal.
     Dean of Finance, Dean of Academics, and Director are MANDATORY in all chains!
+    Resolves department-wise HOD based on the selected organizing unit.
     """
     mandatory_tail = [
         {"role": "DEAN_ACCOUNTS", "title": "Dean of Finance & Accounts (Mandatory Sanction)"},
@@ -16,20 +34,32 @@ def get_default_chain(chain_type, custom_roles=None):
         {"role": "DIRECTOR", "title": "Director of the Institute (Mandatory Final Clearance)"},
     ]
 
-    role_titles = {
-        'HOD': 'Head of Department (HOD)',
-        'CLUB_HEAD': 'Faculty Advisor / Club In-Charge',
-        'REGISTRAR': 'Registrar / Establishment Section (HR)',
-        'DEAN_RESEARCH': 'Dean of Research & Consultancy (R&D)',
-        'DEAN_STUDENT_WELFARE': 'Dean of Student Welfare (DSW)',
-        'DEAN_ACCOUNTS': 'Dean of Finance & Accounts (Mandatory)',
-        'DEAN_ACADEMICS': 'Dean of Academic Affairs (Mandatory)',
-        'DIRECTOR': 'Director of the Institute (Mandatory)',
-    }
+    # Resolve department-specific HOD
+    dept_hod_role = 'HOD'
+    dept_hod_title = 'Head of Department (HOD)'
+
+    if unit_id:
+        try:
+            unit = OrganizingUnit.objects.get(id=unit_id)
+            unit_name_lower = unit.name.lower()
+            if 'computer' in unit_name_lower or 'cse' in unit_name_lower:
+                dept_hod_role = 'HOD_CSE'
+                dept_hod_title = 'HOD - Computer Science & Engineering (Dr. K. V. Ramanathan)'
+            elif 'electronics' in unit_name_lower or 'ece' in unit_name_lower:
+                dept_hod_role = 'HOD_ECE'
+                dept_hod_title = 'HOD - Electronics & Communication Engineering (Dr. Sunita Kulkarni)'
+            elif 'mechanical' in unit_name_lower or 'mech' in unit_name_lower:
+                dept_hod_role = 'HOD_MECH'
+                dept_hod_title = 'HOD - Mechanical Engineering (Dr. Vikramaditya Rathore)'
+            elif unit.unit_type == 'CLUB':
+                dept_hod_role = 'CLUB_HEAD'
+                dept_hod_title = f"Club Advisor - {unit.name}"
+        except Exception:
+            pass
 
     if chain_type == 'ACADEMIC':
         head = [
-            {"role": "HOD", "title": "Head of Department (HOD)"},
+            {"role": dept_hod_role, "title": dept_hod_title},
             {"role": "DEAN_RESEARCH", "title": "Dean of Research & Consultancy (R&D)"},
         ]
         chain = head + mandatory_tail
@@ -52,18 +82,22 @@ def get_default_chain(chain_type, custom_roles=None):
         chain = []
         if custom_roles:
             for r in custom_roles:
-                # Do not duplicate mandatory roles in custom head
+                # Never duplicate mandatory roles in custom head
                 if r not in ['DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR']:
-                    chain.append({"role": r, "title": role_titles.get(r, r)})
-        # Always append mandatory 3 stages
+                    chain.append({"role": r, "title": ROLE_DESCRIPTIONS.get(r, r)})
+        
+        # If user picked no preliminary role in custom chain, default to organizing unit head
+        if not chain:
+            chain.append({"role": dept_hod_role, "title": dept_hod_title})
+
+        # Append mandatory 3 statutory stages
         chain += mandatory_tail
     else:
         chain = [
-            {"role": "HOD", "title": "Head of Department (HOD)"},
+            {"role": dept_hod_role, "title": dept_hod_title},
             {"role": "DEAN_RESEARCH", "title": "Dean of Research & Consultancy (R&D)"},
         ] + mandatory_tail
 
-    # Number each step sequentially
     for idx, stage in enumerate(chain, start=1):
         stage['step'] = idx
         stage['status'] = 'PENDING' if idx == 1 else 'WAITING'

@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ proposal.title }} - Event Details - CEMS{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Top Bar Navigation -->
+    <div class="flex items-center justify-between">
+        <a href="{% url 'student_events' %}" class="inline-flex items-center text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+            <i class="fa-solid fa-arrow-left mr-2"></i>Back to Campus Events
+        </a>
+
+        {% if is_organizer or user.is_superuser %}
+            <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 bg-amber-50 text-amber-800 text-[11px] font-bold rounded-lg border border-amber-200">
+                    <i class="fa-solid fa-user-shield mr-1"></i>You are the Event Coordinator
+                </span>
+                <a href="{% url 'proposal_detail' proposal.id %}" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition">
+                    Proposal Admin View
+                </a>
+                <a href="{% url 'live_event' proposal.id %}" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition shadow-sm">
+                    <i class="fa-solid fa-qrcode mr-1.5"></i>Project Live QR
+                </a>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Main Event Card -->
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        
+        <!-- Poster / Banner -->
+        {% if proposal.poster_image %}
+            <div class="w-full max-h-96 overflow-hidden bg-slate-900 flex items-center justify-center">
+                <img src="{{ proposal.poster_image.url }}" alt="{{ proposal.title }}" class="w-full h-full object-cover">
+            </div>
+        {% elif proposal.poster_data_uri %}
+            <div class="w-full max-h-96 overflow-hidden bg-slate-900 flex items-center justify-center">
+                <img src="{{ proposal.poster_data_uri }}" alt="{{ proposal.title }}" class="w-full h-full object-cover">
+            </div>
+        {% else %}
+            <div class="w-full h-48 bg-gradient-to-r from-brand-900 via-indigo-900 to-slate-900 flex items-center justify-center text-white/50">
+                <div class="text-center">
+                    <i class="fa-solid fa-building-columns text-4xl mb-2"></i>
+                    <p class="text-xs uppercase tracking-widest font-bold text-white/70">{{ proposal.organizing_unit.name }}</p>
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Content Body -->
+        <div class="p-8 space-y-6">
+
+            <!-- Badges & Title -->
+            <div class="space-y-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-100">
+                        {{ proposal.organizing_unit.name }}
+                    </span>
+                    <span class="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 flex items-center">
+                        <i class="fa-solid fa-circle-check mr-1.5"></i>Institutional Approved & Published
+                    </span>
+                    {% if proposal.published_at %}
+                        <span class="text-xs text-slate-400">
+                            Published on {{ proposal.published_at|date:"M d, Y" }}
+                        </span>
+                    {% endif %}
+                </div>
+
+                <h1 class="text-3xl font-black text-slate-900 leading-tight">
+                    {{ proposal.title }}
+                </h1>
+            </div>
+
+            <!-- Key Info Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                <div class="space-y-1">
+                    <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Date & Time</span>
+                    <p class="font-bold text-slate-800 text-sm flex items-center">
+                        <i class="fa-solid fa-calendar text-brand-600 mr-2"></i>
+                        {{ proposal.start_date|date:"D, M d, Y" }}
+                    </p>
+                    <p class="text-slate-500 pl-5">{{ proposal.start_date|date:"h:i A" }} - {{ proposal.end_date|date:"h:i A" }}</p>
+                </div>
+
+                <div class="space-y-1">
+                    <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Venue</span>
+                    <p class="font-bold text-slate-800 text-sm flex items-center">
+                        <i class="fa-solid fa-location-dot text-rose-600 mr-2"></i>
+                        {{ proposal.venue }}
+                    </p>
+                    <p class="text-slate-500 pl-5">Capacity: {{ proposal.expected_attendees }} Students</p>
+                </div>
+
+                <div class="space-y-1">
+                    <span class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Resource Person / Expert</span>
+                    <p class="font-bold text-slate-800 text-sm flex items-center">
+                        <i class="fa-solid fa-chalkboard-user text-amber-600 mr-2"></i>
+                        {{ proposal.guest_speaker }}
+                    </p>
+                    <p class="text-slate-500 pl-5">Organizer: {{ proposal.proposer.get_full_name|default:proposal.proposer.username }}</p>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="space-y-2">
+                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider">Event Overview & Agenda</h3>
+                <div class="text-slate-700 text-sm leading-relaxed whitespace-pre-line bg-white p-4 rounded-xl border border-slate-100">
+                    {{ proposal.description }}
+                </div>
+            </div>
+
+            <!-- Coordinator & Co-Coordinator Info -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-2">
+                <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <span class="text-slate-400 font-semibold block text-[10px] uppercase">Faculty Coordinator</span>
+                    <span class="font-bold text-slate-800 text-sm">{{ proposal.proposer.get_full_name|default:proposal.proposer.username }}</span>
+                    <span class="text-slate-500 block text-xs mt-0.5">{{ proposal.organizing_unit.name }}</span>
+                </div>
+                <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <span class="text-slate-400 font-semibold block text-[10px] uppercase">Co-Coordinator / Department Lead</span>
+                    <span class="font-bold text-slate-800 text-sm">{{ proposal.co_coordinator|default:"Department Committee" }}</span>
+                    <span class="text-slate-500 block text-xs mt-0.5">Faculty Lead</span>
+                </div>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <!-- SECTION: Student Registration vs Campus Entity View -->
+            {% if is_student %}
+                <!-- STUDENT VIEW -->
+                {% if user_registration %}
+                    <!-- Already Registered -->
+                    <div class="p-6 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-emerald-900 text-base">You are registered for this event!</h4>
+                                <p class="text-xs text-emerald-700">
+                                    Registered as <strong>{{ user_registration.get_role_display }}</strong> on {{ user_registration.registered_at|date:"M d, Y - h:i A" }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="bg-white/80 p-4 rounded-xl border border-emerald-100 text-xs text-slate-700 space-y-1">
+                            <p class="font-semibold text-emerald-800 flex items-center">
+                                <i class="fa-solid fa-circle-info mr-1.5"></i>Attendance & Verification Instructions:
+                            </p>
+                            <p>1. Arrive at <strong>{{ proposal.venue }}</strong> on <strong>{{ proposal.start_date|date:"D, M d, Y" }}</strong>.</p>
+                            <p>2. The organizer will project a <strong>Live Rotating Attendance QR</strong> on the auditorium screen.</p>
+                            <p>3. Scan the QR code using your phone camera, snap your selfie check-in, and submit the feedback to verify your attendance.</p>
+                        </div>
+
+                        <div class="pt-2">
+                            <a href="{% url 'my_registrations' %}" class="inline-flex items-center px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm transition">
+                                <i class="fa-solid fa-ticket mr-1.5"></i>View in My Registrations
+                            </a>
+                        </div>
+                    </div>
+                {% else %}
+                    <!-- Not Registered Yet: Single Registration Form -->
+                    <div class="p-6 bg-gradient-to-br from-indigo-50/70 to-brand-50/50 rounded-2xl border border-indigo-100 space-y-4">
+                        <div>
+                            <h4 class="font-black text-slate-900 text-base flex items-center">
+                                <i class="fa-solid fa-id-card text-brand-600 mr-2"></i>Register for this Event
+                            </h4>
+                            <p class="text-xs text-slate-500 mt-0.5">
+                                Institutional rules: Each student may register only once. Choose your engagement role below.
+                            </p>
+                        </div>
+
+                        <form method="POST" action="{% url 'event_register' proposal.id %}" class="space-y-4">
+                            {% csrf_token %}
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-2">Select Your Role</label>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <label class="relative flex flex-col p-4 bg-white border-2 border-slate-200 rounded-xl cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/30">
+                                        <input type="radio" name="role" value="PARTICIPANT" checked class="sr-only">
+                                        <span class="font-bold text-xs text-slate-900 mb-1">Participant</span>
+                                        <span class="text-[11px] text-slate-500">Attend workshops, lectures, hands-on sessions.</span>
+                                    </label>
+                                    <label class="relative flex flex-col p-4 bg-white border-2 border-slate-200 rounded-xl cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/30">
+                                        <input type="radio" name="role" value="VOLUNTEER" class="sr-only">
+                                        <span class="font-bold text-xs text-slate-900 mb-1">Student Volunteer</span>
+                                        <span class="text-[11px] text-slate-500">Assist organizing committee with crowd & logistics.</span>
+                                    </label>
+                                    <label class="relative flex flex-col p-4 bg-white border-2 border-slate-200 rounded-xl cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50/30">
+                                        <input type="radio" name="role" value="VIEWER" class="sr-only">
+                                        <span class="font-bold text-xs text-slate-900 mb-1">Audience / Viewer</span>
+                                        <span class="text-[11px] text-slate-500">Spectator attendance without workshop deliverables.</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-2">
+                                <span class="text-[11px] text-slate-500 italic">
+                                    <i class="fa-solid fa-lock mr-1"></i>One registration only per student
+                                </span>
+                                <button type="submit" class="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-extrabold rounded-xl shadow-md transition flex items-center">
+                                    <i class="fa-solid fa-paper-plane mr-2"></i>Confirm Registration
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                {% endif %}
+            {% else %}
+                <!-- FACULTY / HOD / DEAN / DIRECTOR / ADMIN VIEW -->
+                <div class="p-5 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="space-y-1">
+                        <span class="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded">Institutional Record</span>
+                        <h4 class="font-bold text-slate-800 text-sm">General Campus Entity View</h4>
+                        <p class="text-xs text-slate-500">
+                            Faculty and departmental authorities can inspect published event details. Student registration is restricted to enrolled student accounts.
+                        </p>
+                    </div>
+
+                    {% if is_organizer or user.is_superuser %}
+                        <div class="flex items-center gap-2">
+                            <a href="{% url 'live_event' proposal.id %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition whitespace-nowrap">
+                                <i class="fa-solid fa-qrcode mr-1.5"></i>Launch Projector QR
+                            </a>
+                            <a href="{% url 'proposal_detail' proposal.id %}" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl transition whitespace-nowrap">
+                                View Full Proposal
+                            </a>
+                        </div>
+                    {% else %}
+                        <a href="{% url 'proposal_detail' proposal.id %}" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold rounded-xl transition whitespace-nowrap self-start sm:self-auto">
+                            View Approval Audit Chain
+                        </a>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
