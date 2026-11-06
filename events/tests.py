@@ -137,3 +137,122 @@ class EventLifecycleTestCase(TestCase):
         # Should redirect to dashboard ('/') with error
         self.assertEqual(res.status_code, 302)
         self.assertEqual(res.url, '/')
+
+
+class AccountsAndSecurityTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        # Seed whitelist entry for testing signup
+        self.whitelist_roll = '22BCSE999'
+        from events.models import RollWhitelist
+        RollWhitelist.objects.create(
+            roll_number=self.whitelist_roll,
+            name='Test Student',
+            department='Computer Science & Engineering',
+            year=2,
+            is_used=False
+        )
+
+    def test_student_signup_valid_domain_and_whitelist(self):
+        """Valid signup with @college.ac.in and whitelisted roll number succeeds."""
+        from events.models import RollWhitelist, StudentProfile
+        res = self.client.post('/register/', {
+            'username': 'teststudent22',
+            'first_name': 'Test',
+            'last_name': 'Student',
+            'email': 'teststudent22@college.ac.in',
+            'roll_no': self.whitelist_roll,
+            'department': 'Computer Science & Engineering',
+            'year': 2,
+            'password': 'password123',
+        })
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.url, '/')
+
+        # Verify whitelist consumed
+        whitelist_entry = RollWhitelist.objects.get(roll_number=self.whitelist_roll)
+        self.assertTrue(whitelist_entry.is_used)
+
+        # Verify StudentProfile created
+        user = User.objects.get(username='teststudent22')
+        self.assertFalse(user.is_staff)
+        self.assertTrue(hasattr(user, 'student_profile'))
+        self.assertEqual(user.student_profile.roll_number, self.whitelist_roll)
+
+    def test_student_signup_invalid_email_domain(self):
+        """Signup with unauthorized domain (e.g. @gmail.com) is rejected."""
+        res = self.client.post('/register/', {
+            'username': 'bademailstudent',
+            'first_name': 'Bad',
+            'last_name': 'Email',
+            'email': 'bademail@gmail.com',
+            'roll_no': self.whitelist_roll,
+            'department': 'Computer Science',
+            'year': 1,
+            'password': 'password123',
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(User.objects.filter(username='bademailstudent').exists())
+
+    def test_student_signup_unwhitelisted_roll(self):
+        """Signup with roll number not in RollWhitelist is rejected."""
+        res = self.client.post('/register/', {
+            'username': 'randomstudent',
+            'first_name': 'Random',
+            'last_name': 'Student',
+            'email': 'random@college.ac.in',
+            'roll_no': '99UNKNOWN01',
+            'department': 'Computer Science',
+            'year': 1,
+            'password': 'password123',
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(User.objects.filter(username='randomstudent').exists())
+
+    def test_student_signup_already_used_roll(self):
+        """Signup with an already consumed roll number is blocked."""
+        from events.models import RollWhitelist
+        # Mark as used
+        RollWhitelist.objects.filter(roll_number=self.whitelist_roll).update(is_used=True)
+
+        res = self.client.post('/register/', {
+            'username': 'dupstudent',
+            'first_name': 'Duplicate',
+            'last_name': 'Student',
+            'email': 'dup@college.ac.in',
+            'roll_no': self.whitelist_roll,
+            'department': 'Computer Science',
+            'year': 1,
+            'password': 'password123',
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(User.objects.filter(username='dupstudent').exists())
+
+    def test_checkin_requires_registration(self):
+        """Unregistered student attempting check-in gets an error."""
+        faculty = User.objects.create_user(username='fac_ck', password='password123', is_staff=True)
+        UserProfile.objects.create(user=faculty, role='FACULTY')
+        unit = OrganizingUnit.objects.create(name='Test Unit', unit_type='DEPARTMENT')
+
+        now = timezone.now()
+        proposal = EventProposal.objects.create(
+            title='Checkin Test Event',
+            description='Test event',
+            proposer=faculty,
+            organizing_unit=unit,
+            start_date=now + timedelta(days=1),
+            end_date=now + timedelta(days=2),
+            venue='Hall A',
+            chain_type='ACADEMIC',
+            status='APPROVED',
+            qr_checkin_token='test-token-123',
+        )
+
+        student = User.objects.create_user(username='stu_unregistered', password='password123')
+        UserProfile.objects.create(user=student, role='STUDENT')
+
+        self.client.login(username='stu_unregistered', password='password123')
+        res = self.client.post('/events/checkin/', {'token': proposal.qr_checkin_token})
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(EventRegistration.objects.filter(event=proposal, student=student).exists())
+

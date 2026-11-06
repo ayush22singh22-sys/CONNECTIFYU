@@ -34,17 +34,28 @@
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Roll Number</label>
-                    <input type="text" name="roll_no" required placeholder="CS22B042" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    <input type="text" name="roll_no" required placeholder="e.g. 21BCSE101" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none uppercase">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Department</label>
-                    <input type="text" name="department" required placeholder="Computer Science" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Academic Year</label>
+                    <select name="year" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
+                    </select>
                 </div>
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">College Email</label>
-                <input type="email" name="email" required placeholder="student@college.edu" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Department</label>
+                <input type="text" name="department" required placeholder="Computer Science & Engineering" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">College Email (@college.ac.in)</label>
+                <input type="email" name="email" required placeholder="your.name@college.ac.in" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                <p class="text-[11px] text-slate-400 mt-1">Must use official institute email domain</p>
             </div>
 
             <div>

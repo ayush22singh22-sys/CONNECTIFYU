@@ -4,6 +4,68 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 
+# ── G2: Roll Number Whitelist ─────────────────────────────────────────────────
+class RollWhitelist(models.Model):
+    """
+    Superadmin imports this via CSV before student signup opens.
+    One valid roll number = one allowed signup.
+    """
+    YEAR_CHOICES = [
+        (1, '1st Year'), (2, '2nd Year'), (3, '3rd Year'), (4, '4th Year'),
+    ]
+    roll_number = models.CharField(max_length=30, unique=True)
+    name        = models.CharField(max_length=150, blank=True)
+    department  = models.CharField(max_length=150, blank=True)
+    year        = models.PositiveSmallIntegerField(choices=YEAR_CHOICES, default=1)
+    is_used     = models.BooleanField(default=False, help_text='True once a student has signed up with this roll number')
+
+    class Meta:
+        verbose_name        = 'Roll Number Whitelist Entry'
+        verbose_name_plural = 'Roll Number Whitelist'
+        ordering            = ['roll_number']
+
+    def __str__(self):
+        used = ' [USED]' if self.is_used else ''
+        return f"{self.roll_number} — {self.name} ({self.department}){used}"
+
+
+# ── G3: StudentProfile ────────────────────────────────────────────────────────
+class StudentProfile(models.Model):
+    """
+    One-to-one extension of User for STUDENT role.
+    Stores roll number (links to whitelist), department, year.
+    """
+    YEAR_CHOICES = RollWhitelist.YEAR_CHOICES
+
+    user        = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
+    roll_number = models.CharField(max_length=30, unique=True)
+    department  = models.CharField(max_length=150, blank=True)
+    year        = models.PositiveSmallIntegerField(choices=YEAR_CHOICES, default=1)
+    phone       = models.CharField(max_length=20, blank=True)
+
+    def __str__(self):
+        return f"{self.user.get_full_name() or self.user.username} ({self.roll_number})"
+
+
+# ── G3: StaffProfile ─────────────────────────────────────────────────────────
+class StaffProfile(models.Model):
+    """
+    One-to-one extension of User for all non-student staff
+    (Faculty, HOD, Deans, Director, Registrar, Club Head).
+    Links user to their OrganizingUnit for approval chain matching.
+    """
+    user             = models.OneToOneField(User, on_delete=models.CASCADE, related_name='staff_profile')
+    designation      = models.CharField(max_length=150, blank=True, help_text='e.g. Assistant Professor (CSE)')
+    organizing_unit  = models.ForeignKey(
+        'OrganizingUnit', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='staff_members',
+        help_text='Primary department/club this staff belongs to'
+    )
+
+    def __str__(self):
+        return f"{self.user.get_full_name() or self.user.username} — {self.designation}"
+
+
 class UserProfile(models.Model):
     ROLE_CHOICES = [
         ('STUDENT', 'Student'),
@@ -216,7 +278,12 @@ class EventRegistration(models.Model):
     registered_at = models.DateTimeField(auto_now_add=True)
 
     checked_in_at = models.DateTimeField(null=True, blank=True)
-    selfie_image = models.TextField(blank=True, help_text="Base64 Data URI of anti-proxy selfie")
+    # G11: Store selfie as file (not base64 blob) with restricted access
+    selfie_image = models.ImageField(
+        upload_to='selfies/%Y/%m/',
+        null=True, blank=True,
+        help_text='Front-camera anti-proxy selfie captured at check-in'
+    )
 
     class Meta:
         unique_together = ('event', 'student')

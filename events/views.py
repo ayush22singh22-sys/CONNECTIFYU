@@ -1,4 +1,5 @@
 import json
+from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
@@ -10,10 +11,27 @@ from django.http import JsonResponse, HttpResponseForbidden
 
 from .models import (
     UserProfile, OrganizingUnit, EventProposal,
-    ApprovalLog, EventRegistration, EventFeedback, LogisticsNotification
+    ApprovalLog, EventRegistration, EventFeedback, LogisticsNotification,
+    RollWhitelist, StudentProfile, StaffProfile,
 )
 from .utils import generate_qr_base64, dispatch_logistics_notifications, get_default_chain
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _get_user_role(user):
+    """Return role string from UserProfile, or None."""
+    return getattr(getattr(user, 'profile', None), 'role', None)
+
+
+def _is_student(user):
+    """True if the authenticated user is a student (is_staff=False or role=STUDENT)."""
+    if not user.is_authenticated:
+        return False
+    return not user.is_staff or _get_user_role(user) == 'STUDENT'
+
+
+# ── Auth Views ────────────────────────────────────────────────────────────────
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -25,6 +43,7 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
+            # G5: Route by is_staff after login
             return redirect('dashboard')
         else:
             messages.error(request, "Invalid username or password.")
@@ -51,56 +70,120 @@ def switch_user_view(request, username):
 
 
 def register_student_view(request):
+    """
+    G1 + G2: Student signup with:
+    1. Email domain validation (ALLOWED_EMAIL_DOMAINS from settings)
+    2. Roll number whitelist check (RollWhitelist table)
+    3. Prevents duplicate roll number signup
+    4. Creates User + UserProfile + StudentProfile
+    5. Marks whitelist entry is_used=True
+    """
     if request.user.is_authenticated:
         return redirect('dashboard')
 
+    allowed_domains = getattr(settings, 'ALLOWED_EMAIL_DOMAINS', ['college.ac.in'])
+
     if request.method == 'POST':
-        username = request.POST.get('username')
-        first_name = request.POST.get('first_name')
-        last_name = request.POST.get('last_name')
-        email = request.POST.get('email')
-        roll_no = request.POST.get('roll_no')
-        department = request.POST.get('department')
-        password = request.POST.get('password')
+        username   = request.POST.get('username', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name  = request.POST.get('last_name', '').strip()
+        email      = request.POST.get('email', '').strip().lower()
+        roll_no    = request.POST.get('roll_no', '').strip().upper()
+        department = request.POST.get('department', '').strip()
+        year       = int(request.POST.get('year', 1))
+        password   = request.POST.get('password', '')
 
+        # ── Validation ────────────────────────────────────────────────────────
+
+        # 1. Email domain check (server-side — cannot be bypassed by JS)
+        email_domain = email.split('@')[-1] if '@' in email else ''
+        if email_domain not in allowed_domains:
+            messages.error(
+                request,
+                f"Invalid email domain '@{email_domain}'. "
+                f"Only {', '.join(f'@{d}' for d in allowed_domains)} email addresses are allowed."
+            )
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
+
+        # 2. Roll number whitelist check
+        whitelist_entry = RollWhitelist.objects.filter(roll_number=roll_no).first()
+        if not whitelist_entry:
+            messages.error(request, f"Roll number '{roll_no}' is not in the admission whitelist. Contact the administrator.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
+
+        if whitelist_entry.is_used:
+            messages.error(request, f"Roll number '{roll_no}' has already been used to create an account. Contact admin if this is an error.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
+
+        # 3. Username / email uniqueness
         if User.objects.filter(username=username).exists():
-            messages.error(request, "Username / Roll Number already registered.")
-            return render(request, 'registration/register.html')
+            messages.error(request, "This username is already taken. Please choose another.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
 
+        if User.objects.filter(email=email).exists():
+            messages.error(request, "An account with this email already exists.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
+
+        # 4. Roll number uniqueness in StudentProfile
+        if StudentProfile.objects.filter(roll_number=roll_no).exists():
+            messages.error(request, f"Roll number '{roll_no}' is already registered. Contact admin.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
+
+        # ── Create Account ────────────────────────────────────────────────────
         user = User.objects.create_user(
             username=username,
             first_name=first_name,
             last_name=last_name,
             email=email,
-            password=password
+            password=password,
+            is_staff=False,  # Students are never staff
         )
+
+        # Legacy UserProfile (keeps existing approval logic working)
         UserProfile.objects.create(
             user=user,
             role='STUDENT',
             department=department,
-            roll_or_emp_id=roll_no
+            roll_or_emp_id=roll_no,
         )
+
+        # New StudentProfile
+        StudentProfile.objects.create(
+            user=user,
+            roll_number=roll_no,
+            department=department,
+            year=year,
+        )
+
+        # Mark whitelist entry as consumed
+        whitelist_entry.is_used = True
+        whitelist_entry.save()
+
         login(request, user)
         messages.success(request, f"Namaste {first_name}! Welcome to the College Event Management System.")
         return redirect('dashboard')
 
-    return render(request, 'registration/register.html')
+    return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
+
+
 
 
 @login_required
 def dashboard_view(request):
     """
-    Default screen for EVERY entity:
-    - Students see their dedicated Student Dashboard with their registrations, verified status, and campus events.
-    - Faculty/Organizers see proposal pipeline & live tools.
-    - Approvers (HOD, Deans, Director) see their actionable review queue.
+    G5: Login routing by is_staff.
+    - is_staff=False (students) → Student Dashboard
+    - is_staff=True (faculty, approvers, deans, director) → Staff Dashboard
     """
     user = request.user
     profile = getattr(user, 'profile', None)
     role = profile.role if profile else 'STUDENT'
 
+    # G5: use is_staff as the authoritative routing gate
+    is_student_user = not user.is_staff or role == 'STUDENT'
+
     # --- 1. DEDICATED STUDENT DASHBOARD ---
-    if role == 'STUDENT':
+    if is_student_user:
         registrations = EventRegistration.objects.filter(student=user).select_related('event', 'event__organizing_unit').order_by('-registered_at')
         verified_count = registrations.filter(status='VERIFIED').count()
         checked_in_count = registrations.filter(status='CHECKED_IN').count()
@@ -433,6 +516,10 @@ def process_approval_view(request, proposal_id):
             remarks=remarks,
             revision_cycle=proposal.revision_count
         )
+
+        # G9: Email faculty proposer with the rejection remarks
+        _notify_proposer_revision(proposal, request.user, current_stage_title, remarks, action='revision')
+
         messages.warning(request, f"Proposal returned for revision to {proposal.proposer.get_full_name() or proposal.proposer.username}.")
 
     elif action == 'REJECT':
@@ -449,12 +536,46 @@ def process_approval_view(request, proposal_id):
             remarks=remarks,
             revision_cycle=proposal.revision_count
         )
+
+        # G9: Email faculty proposer with the rejection remarks
+        _notify_proposer_revision(proposal, request.user, current_stage_title, remarks, action='reject')
+
         messages.error(request, f"Proposal '{proposal.title}' was rejected.")
 
     return redirect('proposal_detail', proposal_id=proposal_id)
 
 
-# --- Student Facing Views ---
+# ── G9: Notify proposer on reject/revision ───────────────────────────────────
+def _notify_proposer_revision(proposal, approver, stage_title, remarks, action):
+    """
+    Send email to the faculty proposer when their proposal is rejected or
+    returned for revision. Silently logs failure (never crashes the request).
+    """
+    from django.core.mail import send_mail
+    action_label = 'returned for Revision' if action == 'revision' else 'Rejected'
+    subject = f"[CEMS] Your Proposal '{proposal.title}' was {action_label}"
+    body = (
+        f"Dear {proposal.proposer.get_full_name() or proposal.proposer.username},\n\n"
+        f"Your event proposal \"{proposal.title}\" has been {action_label} at stage:\n"
+        f"  {stage_title}\n\n"
+        f"Remarks from {approver.get_full_name() or approver.username}:\n"
+        f"  {remarks}\n\n"
+        f"{'Please log in, address the remarks, and resubmit for review.' if action == 'revision' else 'Please contact your HOD/Dean if you believe this is an error.'}\n\n"
+        f"-- CEMS Automated Notification"
+    )
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email='noreply-events@college.ac.in',
+            recipient_list=[proposal.proposer.email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass  # Email failure must never crash the approval flow
+
+
+# ── Student Facing Views ──────────────────────────────────────────────────────
 
 @login_required
 def student_events_view(request):
@@ -530,32 +651,51 @@ def live_event_view(request, proposal_id):
 @login_required
 def checkin_view(request):
     """
-    Step 7 in lifecycle:
-    Student scans projected QR code on phone, immediately followed by
-    front-camera selfie to prevent attendance proxy fraud.
+    G10 — Hardened Check-in:
+    - Only registered students can check in (no auto-create).
+    - Duplicate scan: friendly message, no double CHECKED_IN.
+    - Non-students (staff/faculty) blocked from checking in.
+    - Invalid token: clear error.
     """
+    # Staff/faculty should not be checking into events
+    if request.user.is_staff and _get_user_role(request.user) != 'STUDENT':
+        messages.error(request, "Staff members do not check in to events via QR.")
+        return redirect('dashboard')
+
     token = request.GET.get('token') or request.POST.get('token')
     proposal = None
     if token:
         proposal = EventProposal.objects.filter(qr_checkin_token=token).first()
 
+    if not proposal and token:
+        messages.error(request, "Invalid or expired QR code. Please scan the current QR code displayed on the projector.")
+        return render(request, 'events/checkin_selfie.html', {'proposal': None, 'token': ''})
+
     if request.method == 'POST':
         token = request.POST.get('token')
-        selfie_b64 = request.POST.get('selfie_image', '')
+        selfie_file = request.FILES.get('selfie_image')
         proposal = get_object_or_404(EventProposal, qr_checkin_token=token)
 
-        reg, _ = EventRegistration.objects.get_or_create(
-            event=proposal,
-            student=request.user,
-            defaults={'role': 'PARTICIPANT', 'status': 'REGISTERED'}
-        )
+        # G10a: Must be registered for this event
+        reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
+        if not reg:
+            messages.error(request, f"You are not registered for '{proposal.title}'. Please register on the Events page first.")
+            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+
+        # G10b: Duplicate check-in block
+        if reg.status in ('CHECKED_IN', 'VERIFIED'):
+            messages.info(request, f"You have already checked in to '{proposal.title}'. Your attendance status is: {reg.get_status_display()}.")
+            if reg.status == 'CHECKED_IN' and not hasattr(reg, 'feedback'):
+                return redirect('event_feedback', registration_id=reg.id)
+            return redirect('dashboard')
 
         reg.status = 'CHECKED_IN'
         reg.checked_in_at = timezone.now()
-        reg.selfie_image = selfie_b64
+        if selfie_file:
+            reg.selfie_image = selfie_file
         reg.save()
 
-        messages.success(request, f"Check-in verified via selfie! Please complete the quick mandatory feedback below to verify your attendance.")
+        messages.success(request, "Check-in verified via selfie! Please complete the quick mandatory feedback below to verify your attendance.")
         return redirect('event_feedback', registration_id=reg.id)
 
     context = {

@@ -7,11 +7,17 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-^408s83@d81)9y&r!0l0$fe3fbx8y)t%f1x)o($#vnbg1l70y6'
+# In production, set SECRET_KEY in .env and load with python-decouple
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-^408s83@d81)9y&r!0l0$fe3fbx8y)t%f1x)o($#vnbg1l70y6')
 
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['*']
+
+# ── Accounts: Student signup email domain whitelist ─────────────────────────
+# Set in .env as ALLOWED_EMAIL_DOMAINS=college.ac.in,university.ac.in
+_raw_domains = os.environ.get('ALLOWED_EMAIL_DOMAINS', 'college.ac.in')
+ALLOWED_EMAIL_DOMAINS = [d.strip() for d in _raw_domains.split(',') if d.strip()]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
