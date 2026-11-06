@@ -1,6 +1,8 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 *.class
 db.sqlite3
 *.sqlite3
 .env
+media/
+scratch_resolve.py

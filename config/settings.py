@@ -4,15 +4,29 @@ Django settings for config project.
 
 from pathlib import Path
 import os
+import secrets
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# In production, set SECRET_KEY in .env and load with python-decouple
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-^408s83@d81)9y&r!0l0$fe3fbx8y)t%f1x)o($#vnbg1l70y6')
+# ── Security: SECRET_KEY ──────────────────────────────────────────────────────
+# PRODUCTION: Set a strong SECRET_KEY via environment variable.
+# NEVER commit a real secret key to source control.
+# Generate one with: python -c "import secrets; print(secrets.token_urlsafe(60))"
+_default_secret = os.environ.get('DJANGO_SECRET_KEY_DEFAULT', '')
+SECRET_KEY = os.environ.get('SECRET_KEY', _default_secret or secrets.token_urlsafe(60))
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*']
+# ── Security: ALLOWED_HOSTS ───────────────────────────────────────────────────
+# PRODUCTION: Set ALLOWED_HOSTS env var to your real domain(s).
+# e.g. ALLOWED_HOSTS=connectifyu.college.ac.in,www.connectifyu.college.ac.in
+_raw_hosts = os.environ.get('ALLOWED_HOSTS', '')
+if _raw_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.localhost', '[::1]']
+else:
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 # ── Accounts: Student signup email domain whitelist ─────────────────────────
 # Set in .env as ALLOWED_EMAIL_DOMAINS=college.ac.in,university.ac.in
@@ -102,3 +116,4 @@ LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply-events@college.ac.in')

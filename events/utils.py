@@ -1,6 +1,7 @@
 import io
 import base64
 import qrcode
+from django.conf import settings
 from django.core.mail import send_mail
 from .models import LogisticsNotification, OrganizingUnit
 
@@ -81,11 +82,13 @@ def get_default_chain(chain_type, unit_id=None, custom_roles=None):
     elif chain_type == 'CUSTOM':
         chain = []
         if custom_roles:
+            seen_roles = set()
             for r in custom_roles:
-                # Never duplicate mandatory roles in custom head
-                if r not in ['DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR']:
+                # Never duplicate mandatory roles in custom head, nor duplicate custom roles
+                if r not in ['DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'] and r not in seen_roles:
+                    seen_roles.add(r)
                     chain.append({"role": r, "title": ROLE_DESCRIPTIONS.get(r, r)})
-        
+
         # If user picked no preliminary role in custom chain, default to organizing unit head
         if not chain:
             chain.append({"role": dept_hod_role, "title": dept_hod_title})
@@ -131,6 +134,8 @@ def dispatch_logistics_notifications(proposal):
     """
     notifications = []
 
+    default_from = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply-events@college.ac.in')
+
     # 1. Mess & Catering Section
     if proposal.mess_requirements:
         mess_body = (
@@ -156,7 +161,7 @@ def dispatch_logistics_notifications(proposal):
             send_mail(
                 subject=notif.subject,
                 message=notif.body,
-                from_email='noreply-events@college.ac.in',
+                from_email=default_from,
                 recipient_list=[notif.recipient_email],
                 fail_silently=True
             )
@@ -185,7 +190,7 @@ def dispatch_logistics_notifications(proposal):
             send_mail(
                 subject=notif.subject,
                 message=notif.body,
-                from_email='noreply-events@college.ac.in',
+                from_email=default_from,
                 recipient_list=[notif.recipient_email],
                 fail_silently=True
             )
@@ -214,7 +219,7 @@ def dispatch_logistics_notifications(proposal):
             send_mail(
                 subject=notif.subject,
                 message=notif.body,
-                from_email='noreply-events@college.ac.in',
+                from_email=default_from,
                 recipient_list=[notif.recipient_email],
                 fail_silently=True
             )

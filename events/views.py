@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
@@ -6,6 +7,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Avg, Count, Q, Sum
 from django.http import JsonResponse, HttpResponseForbidden
 
@@ -429,130 +431,135 @@ def process_approval_view(request, proposal_id):
     if request.method != 'POST':
         return redirect('proposal_detail', proposal_id=proposal_id)
 
-    proposal = get_object_or_404(EventProposal, id=proposal_id)
-    if not proposal.is_awaiting_user(request.user):
-        messages.error(request, "You do not have authorization to approve at this stage.")
-        return redirect('proposal_detail', proposal_id=proposal_id)
-
-    action = request.POST.get('action')
-    remarks = request.POST.get('remarks', '').strip()
-    profile = request.user.profile
-
-    if action in ['REJECT', 'REQUEST_REVISION'] and not remarks:
-        messages.error(request, "Written remarks are mandatory when requesting a revision or rejecting.")
-        return redirect('proposal_detail', proposal_id=proposal_id)
-
-    chain = proposal.approval_chain or []
-    current_idx = proposal.current_stage_index
-    current_stage_dict = chain[current_idx] if current_idx < len(chain) else {}
-    current_stage_title = current_stage_dict.get('title', f"Stage {current_idx + 1}")
-
-    if action == 'APPROVE':
-        current_stage_dict['status'] = 'APPROVED'
-        ApprovalLog.objects.create(
-            proposal=proposal,
-            approver=request.user,
-            stage_name=current_stage_title,
-            action='APPROVED',
-            remarks=remarks or "Approved without additional stipulations.",
-            revision_cycle=proposal.revision_count
-        )
-
-        next_idx = current_idx + 1
-        if next_idx >= len(chain):
-            proposal.status = 'APPROVED_PENDING_PUBLISH'
-            proposal.current_stage_index = next_idx
-            proposal.save()
-            dispatch_logistics_notifications(proposal)
-            messages.success(request, f"Executive clearance granted! '{proposal.title}' is approved and logistics sections have been notified. It is now ready for the Faculty Coordinator to upload a poster and publish.")
-        else:
-            chain[next_idx]['status'] = 'PENDING'
-            proposal.current_stage_index = next_idx
-            proposal.approval_chain = chain
-            proposal.save()
-            next_stage_title = chain[next_idx].get('title', f"Stage {next_idx + 1}")
-            messages.success(request, f"Approved! Proposal advanced to Stage {next_idx + 1}: {next_stage_title}.")
-
-    elif action == 'REVISE_BUDGET':
-        if profile.role != 'DEAN_ACCOUNTS' and current_stage_dict.get('role') != 'DEAN_ACCOUNTS':
-            messages.error(request, "Only the Dean of Finance & Accounts can revise budget allocations.")
+    with transaction.atomic():
+        proposal = get_object_or_404(EventProposal.objects.select_for_update(), id=proposal_id)
+        if not proposal.is_awaiting_user(request.user):
+            messages.error(request, "You do not have authorization to approve at this stage.")
             return redirect('proposal_detail', proposal_id=proposal_id)
 
-        try:
-            new_budget = float(request.POST.get('new_budget', 0))
-        except ValueError:
-            messages.error(request, "Invalid budget amount provided.")
+        action = request.POST.get('action')
+        remarks = request.POST.get('remarks', '').strip()
+        profile = request.user.profile
+
+        if action in ['REJECT', 'REQUEST_REVISION'] and not remarks:
+            messages.error(request, "Written remarks are mandatory when requesting a revision or rejecting. Whitespace-only remarks are not accepted.")
             return redirect('proposal_detail', proposal_id=proposal_id)
 
-        old_budget = proposal.approved_budget
-        proposal.approved_budget = new_budget
-        proposal.budget_revision_reason = remarks
+        chain = proposal.approval_chain or []
+        current_idx = proposal.current_stage_index
+        current_stage_dict = chain[current_idx] if current_idx < len(chain) else {}
+        current_stage_title = current_stage_dict.get('title', f"Stage {current_idx + 1}")
 
-        current_stage_dict['status'] = 'APPROVED'
-        ApprovalLog.objects.create(
-            proposal=proposal,
-            approver=request.user,
-            stage_name=current_stage_title,
-            action='BUDGET_REVISED',
-            old_budget=old_budget,
-            revised_budget=new_budget,
-            remarks=remarks or f"Budget adjusted from ₹{old_budget} to ₹{new_budget}.",
-            revision_cycle=proposal.revision_count
-        )
+        if action == 'APPROVE':
+            current_stage_dict['status'] = 'APPROVED'
+            ApprovalLog.objects.create(
+                proposal=proposal,
+                approver=request.user,
+                stage_name=current_stage_title,
+                action='APPROVED',
+                remarks=remarks or "Approved without additional stipulations.",
+                revision_cycle=proposal.revision_count
+            )
 
-        next_idx = current_idx + 1
-        if next_idx >= len(chain):
-            proposal.status = 'APPROVED_PENDING_PUBLISH'
-            proposal.current_stage_index = next_idx
-            proposal.save()
-            dispatch_logistics_notifications(proposal)
-        else:
-            chain[next_idx]['status'] = 'PENDING'
-            proposal.current_stage_index = next_idx
+            next_idx = current_idx + 1
+            if next_idx >= len(chain):
+                proposal.status = 'APPROVED_PENDING_PUBLISH'
+                proposal.current_stage_index = next_idx
+                proposal.save()
+                dispatch_logistics_notifications(proposal)
+                messages.success(request, f"Executive clearance granted! '{proposal.title}' is approved and logistics sections have been notified. It is now ready for the Faculty Coordinator to upload a poster and publish.")
+            else:
+                chain[next_idx]['status'] = 'PENDING'
+                proposal.current_stage_index = next_idx
+                proposal.approval_chain = chain
+                proposal.save()
+                next_stage_title = chain[next_idx].get('title', f"Stage {next_idx + 1}")
+                messages.success(request, f"Approved! Proposal advanced to Stage {next_idx + 1}: {next_stage_title}.")
+
+        elif action == 'REVISE_BUDGET':
+            if profile.role != 'DEAN_ACCOUNTS' and current_stage_dict.get('role') != 'DEAN_ACCOUNTS':
+                messages.error(request, "Only the Dean of Finance & Accounts can revise budget allocations.")
+                return redirect('proposal_detail', proposal_id=proposal_id)
+
+            try:
+                new_budget = float(request.POST.get('new_budget', 0))
+            except ValueError:
+                messages.error(request, "Invalid budget amount provided.")
+                return redirect('proposal_detail', proposal_id=proposal_id)
+
+            if new_budget <= 0:
+                messages.error(request, "Revised budget must be a positive amount greater than zero.")
+                return redirect('proposal_detail', proposal_id=proposal_id)
+
+            old_budget = proposal.approved_budget
+            proposal.approved_budget = new_budget
+            proposal.budget_revision_reason = remarks
+
+            current_stage_dict['status'] = 'APPROVED'
+            ApprovalLog.objects.create(
+                proposal=proposal,
+                approver=request.user,
+                stage_name=current_stage_title,
+                action='BUDGET_REVISED',
+                old_budget=old_budget,
+                revised_budget=new_budget,
+                remarks=remarks or f"Budget adjusted from ₹{old_budget} to ₹{new_budget}.",
+                revision_cycle=proposal.revision_count
+            )
+
+            next_idx = current_idx + 1
+            if next_idx >= len(chain):
+                proposal.status = 'APPROVED_PENDING_PUBLISH'
+                proposal.current_stage_index = next_idx
+                proposal.save()
+                dispatch_logistics_notifications(proposal)
+            else:
+                chain[next_idx]['status'] = 'PENDING'
+                proposal.current_stage_index = next_idx
+                proposal.approval_chain = chain
+                proposal.save()
+
+            messages.success(request, f"Budget revised to ₹{new_budget:,.2f}. Proposal advanced to next stage.")
+
+        elif action == 'REQUEST_REVISION':
+            current_stage_dict['status'] = 'REVISION_REQUESTED'
+            proposal.status = 'REVISION_REQUESTED'
             proposal.approval_chain = chain
             proposal.save()
 
-        messages.success(request, f"Budget revised to ₹{new_budget:,.2f}. Proposal advanced to next stage.")
+            ApprovalLog.objects.create(
+                proposal=proposal,
+                approver=request.user,
+                stage_name=current_stage_title,
+                action='REVISION_REQUESTED',
+                remarks=remarks,
+                revision_cycle=proposal.revision_count
+            )
 
-    elif action == 'REQUEST_REVISION':
-        current_stage_dict['status'] = 'REVISION_REQUESTED'
-        proposal.status = 'REVISION_REQUESTED'
-        proposal.approval_chain = chain
-        proposal.save()
+            # G9: Email faculty proposer with the rejection remarks
+            _notify_proposer_revision(proposal, request.user, current_stage_title, remarks, action='revision')
 
-        ApprovalLog.objects.create(
-            proposal=proposal,
-            approver=request.user,
-            stage_name=current_stage_title,
-            action='REVISION_REQUESTED',
-            remarks=remarks,
-            revision_cycle=proposal.revision_count
-        )
+            messages.warning(request, f"Proposal returned for revision to {proposal.proposer.get_full_name() or proposal.proposer.username}.")
 
-        # G9: Email faculty proposer with the rejection remarks
-        _notify_proposer_revision(proposal, request.user, current_stage_title, remarks, action='revision')
+        elif action == 'REJECT':
+            current_stage_dict['status'] = 'REJECTED'
+            proposal.status = 'REJECTED'
+            proposal.approval_chain = chain
+            proposal.save()
 
-        messages.warning(request, f"Proposal returned for revision to {proposal.proposer.get_full_name() or proposal.proposer.username}.")
+            ApprovalLog.objects.create(
+                proposal=proposal,
+                approver=request.user,
+                stage_name=current_stage_title,
+                action='REJECTED',
+                remarks=remarks,
+                revision_cycle=proposal.revision_count
+            )
 
-    elif action == 'REJECT':
-        current_stage_dict['status'] = 'REJECTED'
-        proposal.status = 'REJECTED'
-        proposal.approval_chain = chain
-        proposal.save()
+            # G9: Email faculty proposer with the rejection remarks
+            _notify_proposer_revision(proposal, request.user, current_stage_title, remarks, action='reject')
 
-        ApprovalLog.objects.create(
-            proposal=proposal,
-            approver=request.user,
-            stage_name=current_stage_title,
-            action='REJECTED',
-            remarks=remarks,
-            revision_cycle=proposal.revision_count
-        )
-
-        # G9: Email faculty proposer with the rejection remarks
-        _notify_proposer_revision(proposal, request.user, current_stage_title, remarks, action='reject')
-
-        messages.error(request, f"Proposal '{proposal.title}' was rejected.")
+            messages.error(request, f"Proposal '{proposal.title}' was rejected.")
 
     return redirect('proposal_detail', proposal_id=proposal_id)
 
@@ -576,10 +583,11 @@ def _notify_proposer_revision(proposal, approver, stage_title, remarks, action):
         f"-- CEMS Automated Notification"
     )
     try:
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply-events@college.ac.in')
         send_mail(
             subject=subject,
             message=body,
-            from_email='noreply-events@college.ac.in',
+            from_email=from_email,
             recipient_list=[proposal.proposer.email],
             fail_silently=True,
         )
@@ -870,8 +878,10 @@ def checkin_view(request):
     G10 — Hardened Check-in & Rotating QR Token:
     - Non-students (staff/faculty) blocked from checking in.
     - Validates dynamic rotating QR token against expiration window.
+    - Event must be approved and currently active.
     - Only registered students can check in.
     - Duplicate scan: friendly message, no double CHECKED_IN.
+    - Strict image validation (JPG/PNG, max 2MB).
     """
     # Staff/faculty should not be checking into events
     if request.user.is_staff and _get_user_role(request.user) != 'STUDENT':
@@ -889,6 +899,11 @@ def checkin_view(request):
         messages.error(request, "Invalid or expired QR code. Please scan the current QR code displayed on the projector.")
         return render(request, 'events/checkin_selfie.html', {'proposal': None, 'token': ''})
 
+    # Validate event status on GET
+    if proposal and proposal.status != 'APPROVED':
+        messages.error(request, "Check-in is only available for officially approved and published campus events.")
+        return render(request, 'events/checkin_selfie.html', {'proposal': None, 'token': token})
+
     if request.method == 'POST':
         token = request.POST.get('token', '').strip()
         selfie_file = request.FILES.get('selfie_image')
@@ -897,15 +912,30 @@ def checkin_view(request):
         base_token = token.split('_')[0] if '_' in token else token
         proposal = get_object_or_404(EventProposal, qr_checkin_token=base_token)
 
+        # Validate token
         is_valid, reason = proposal.validate_rotating_token(token)
         if not is_valid:
             messages.error(request, f"❌ {reason}")
             return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token, 'expired': True})
 
+        # Validate status on POST
+        if proposal.status != 'APPROVED':
+            messages.error(request, "Check-in is only available for officially approved and published campus events.")
+            return render(request, 'events/checkin_selfie.html', {'proposal': None, 'token': token})
+
         # G10a: Must be registered for this event
         reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
         if not reg:
             messages.error(request, f"You are not registered for '{proposal.title}'. Please register on the Events page first.")
+            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+
+        # Validate timeframe
+        now = timezone.now()
+        if proposal.start_date and now < (proposal.start_date - timedelta(hours=1)):
+            messages.error(request, "Check-in has not opened yet. Check-in opens 1 hour before the scheduled start time.")
+            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+        if proposal.end_date and now > (proposal.end_date + timedelta(hours=2)):
+            messages.error(request, "This event has already concluded. Attendance check-in is now closed.")
             return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
 
         # G10b: Duplicate check-in block
@@ -915,19 +945,51 @@ def checkin_view(request):
                 return redirect('event_feedback', registration_id=reg.id)
             return redirect('dashboard')
 
-        reg.status = 'CHECKED_IN'
-        reg.checked_in_at = timezone.now()
+        # Selfie image validation & size limit
         if selfie_file:
-            reg.selfie_image = selfie_file
+            if selfie_file.size > 2 * 1024 * 1024:
+                messages.error(request, "Selfie image exceeds maximum allowed size of 2MB.")
+                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+            try:
+                from PIL import Image
+                img = Image.open(selfie_file)
+                img.verify()
+                if img.format.lower() not in ['jpeg', 'jpg', 'png', 'webp']:
+                    messages.error(request, "Invalid image format. Only JPEG or PNG photos are accepted.")
+                    return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+                selfie_file.seek(0)
+                reg.selfie_image = selfie_file
+            except Exception:
+                messages.error(request, "Corrupt or invalid image uploaded as selfie.")
+                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
         elif selfie_data and selfie_data.startswith('data:image'):
+            if len(selfie_data) > 3 * 1024 * 1024:
+                messages.error(request, "Selfie data exceeds maximum allowed size of 2MB.")
+                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
             try:
                 import base64
+                import io
+                from PIL import Image
                 from django.core.files.base import ContentFile
                 format_part, imgstr = selfie_data.split(';base64,')
+                mime = format_part.replace('data:', '').strip()
+                if mime not in ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']:
+                    messages.error(request, "Unsupported image type. Only JPEG or PNG photos are allowed.")
+                    return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+                raw_bytes = base64.b64decode(imgstr)
+                img = Image.open(io.BytesIO(raw_bytes))
+                img.verify()
                 ext = format_part.split('/')[-1]
-                reg.selfie_image = ContentFile(base64.b64decode(imgstr), name=f"selfie_{reg.id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+                reg.selfie_image = ContentFile(raw_bytes, name=f"selfie_{reg.id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.{ext}")
             except Exception:
-                pass
+                messages.error(request, "Corrupt or invalid image data. Please capture your selfie again.")
+                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+        elif selfie_data and not selfie_data.startswith('data:image'):
+            messages.error(request, "Invalid selfie format. A valid camera photo is required.")
+            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+
+        reg.status = 'CHECKED_IN'
+        reg.checked_in_at = timezone.now()
         reg.save()
 
         messages.success(request, "Check-in verified via live selfie! Please complete the quick mandatory feedback below to verify your attendance.")
@@ -950,10 +1012,19 @@ def feedback_view(request, registration_id):
         return redirect('dashboard')
 
     if request.method == 'POST':
-        rating_overall = int(request.POST.get('rating_overall', 5))
-        rating_content = int(request.POST.get('rating_content', 5))
-        rating_speaker = int(request.POST.get('rating_speaker', 5))
-        comments = request.POST.get('comments', '')
+        try:
+            rating_overall = int(request.POST.get('rating_overall', 5))
+            rating_content = int(request.POST.get('rating_content', 5))
+            rating_speaker = int(request.POST.get('rating_speaker', 5))
+        except (ValueError, TypeError):
+            messages.error(request, "All ratings must be integer numbers between 1 and 5.")
+            return render(request, 'events/feedback.html', {'registration': reg})
+
+        if not (1 <= rating_overall <= 5 and 1 <= rating_content <= 5 and 1 <= rating_speaker <= 5):
+            messages.error(request, "Ratings must be strictly between 1 and 5 stars.")
+            return render(request, 'events/feedback.html', {'registration': reg})
+
+        comments = request.POST.get('comments', '').strip()
 
         EventFeedback.objects.create(
             registration=reg,

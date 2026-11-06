@@ -5,6 +5,7 @@ import hashlib
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 
 # ── G2: Roll Number Whitelist ─────────────────────────────────────────────────
@@ -136,12 +137,12 @@ class EventProposal(models.Model):
     organizing_unit = models.ForeignKey(OrganizingUnit, on_delete=models.CASCADE, related_name='events')
 
     # Approval Chain configuration
-    chain_type = models.CharField(max_length=30, choices=CHAIN_TYPES, default='ACADEMIC')
+    chain_type = models.CharField(max_length=30, choices=CHAIN_TYPES, default='ACADEMIC', db_index=True)
     approval_chain = models.JSONField(
         default=list,
         help_text="Ordered list of stages: [{'role': 'HOD', 'title': 'Head of Department', 'status': 'PENDING', ...}]"
     )
-    current_stage_index = models.PositiveIntegerField(default=0)
+    current_stage_index = models.PositiveIntegerField(default=0, db_index=True)
 
     # Budget in Indian Rupees (₹)
     requested_budget = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
@@ -163,11 +164,11 @@ class EventProposal(models.Model):
     transport_requirements = models.TextField(blank=True, help_text="Vehicle fleet & airport/station pickup")
     maintenance_requirements = models.TextField(blank=True, help_text="Auditorium AC, PA system, audio/visual setup")
 
-    status = models.CharField(max_length=35, choices=STATUS_CHOICES, default='UNDER_REVIEW')
+    status = models.CharField(max_length=35, choices=STATUS_CHOICES, default='UNDER_REVIEW', db_index=True)
     revision_count = models.PositiveIntegerField(default=0)
     is_revision = models.BooleanField(default=False)
 
-    qr_checkin_token = models.CharField(max_length=64, default=uuid.uuid4, unique=True)
+    qr_checkin_token = models.CharField(max_length=64, default=uuid.uuid4, unique=True, db_index=True)
     qr_rotation_secret = models.CharField(max_length=64, default=uuid.uuid4)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -365,7 +366,7 @@ class EventRegistration(models.Model):
     event = models.ForeignKey(EventProposal, on_delete=models.CASCADE, related_name='registrations')
     student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_registrations')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='PARTICIPANT')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='REGISTERED')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='REGISTERED', db_index=True)
     registered_at = models.DateTimeField(auto_now_add=True)
 
     checked_in_at = models.DateTimeField(null=True, blank=True)
@@ -384,10 +385,21 @@ class EventRegistration(models.Model):
 
 
 class EventFeedback(models.Model):
+    _RATING_VALIDATORS = [MinValueValidator(1), MaxValueValidator(5)]
+
     registration = models.OneToOneField(EventRegistration, on_delete=models.CASCADE, related_name='feedback')
-    rating_overall = models.PositiveSmallIntegerField(default=5)
-    rating_content = models.PositiveSmallIntegerField(default=5)
-    rating_speaker = models.PositiveSmallIntegerField(default=5)
+    rating_overall = models.PositiveSmallIntegerField(
+        default=5, validators=_RATING_VALIDATORS,
+        help_text='Overall event rating (1–5 stars)'
+    )
+    rating_content = models.PositiveSmallIntegerField(
+        default=5, validators=_RATING_VALIDATORS,
+        help_text='Content / programme quality rating (1–5 stars)'
+    )
+    rating_speaker = models.PositiveSmallIntegerField(
+        default=5, validators=_RATING_VALIDATORS,
+        help_text='Speaker / guest quality rating (1–5 stars)'
+    )
     comments = models.TextField()
     submitted_at = models.DateTimeField(auto_now_add=True)
 

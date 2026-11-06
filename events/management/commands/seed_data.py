@@ -58,19 +58,21 @@ class Command(BaseCommand):
 
         created_users = {}
         for username, first, last, email, role, dept, roll_or_emp, is_admin in users_directory:
+            is_staff_user = False if role == 'STUDENT' else True
+            is_super = is_admin if role != 'STUDENT' else False
             user, _ = User.objects.get_or_create(username=username, defaults={
                 'first_name': first,
                 'last_name': last,
                 'email': email,
-                'is_staff': True if (role != 'STUDENT' or is_admin) else False,
-                'is_superuser': is_admin,
+                'is_staff': is_staff_user,
+                'is_superuser': is_super,
             })
             user.set_password('password123')
             user.first_name = first
             user.last_name = last
             user.email = email
-            user.is_staff = True if (role != 'STUDENT' or is_admin) else False
-            user.is_superuser = is_admin
+            user.is_staff = is_staff_user
+            user.is_superuser = is_super
             user.save()
 
             profile, _ = UserProfile.objects.get_or_create(user=user)
