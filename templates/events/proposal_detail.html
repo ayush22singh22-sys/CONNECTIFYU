@@ -24,6 +24,9 @@
                     {% else %}bg-indigo-100 text-indigo-800 border border-indigo-200{% endif %}">
                     {{ proposal.get_status_display }}
                 </span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-100 text-brand-800 border border-brand-200">
+                    {{ proposal.get_chain_type_display|slice:":30" }}...
+                </span>
                 {% if proposal.is_revision %}
                     <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400 text-slate-950 uppercase tracking-wide">
                         Revision Cycle {{ proposal.revision_count }}
@@ -41,7 +44,7 @@
 
             {% if proposal.status == 'APPROVED' or proposal.status == 'COMPLETED' %}
                 <a href="{% url 'live_event' proposal.id %}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm shadow-emerald-500/20 transition">
-                    <i class="fa-solid fa-qrcode mr-1.5"></i>Launch Live Check-in
+                    <i class="fa-solid fa-qrcode mr-1.5"></i>Projector Live QR
                 </a>
                 <a href="{% url 'compliance_report' proposal.id %}" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-xs rounded-xl transition">
                     <i class="fa-solid fa-chart-pie mr-1.5"></i>Compliance Report
@@ -50,16 +53,23 @@
         </div>
     </div>
 
-    <!-- 5-Stage Approval Pipeline Tracker -->
+    <!-- DYNAMIC MULTI-STAGE APPROVAL PIPELINE TRACKER -->
     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">Multi-Stage Approval Pipeline Progress</h2>
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Multi-Stage Approval Pipeline Progress ({{ total_stages }} Stages Configured)
+            </h2>
+            <span class="text-xs text-indigo-700 font-semibold">
+                {{ proposal.get_chain_type_display }}
+            </span>
+        </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 relative">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-{{ stages|length|default:5 }} gap-3 relative">
             {% for stage in stages %}
                 <div class="p-4 rounded-xl border relative transition 
-                    {% if current_stage_num > stage.id or proposal.status == 'APPROVED' %}
+                    {% if stage.status == 'CLEARED' %}
                         bg-emerald-50/70 border-emerald-300 text-emerald-900
-                    {% elif current_stage_num == stage.id %}
+                    {% elif stage.status == 'CURRENT' %}
                         bg-amber-50 border-2 border-amber-400 shadow-sm text-amber-950
                     {% else %}
                         bg-slate-50/60 border-slate-200 text-slate-400
@@ -67,24 +77,24 @@
                     
                     <div class="flex items-center justify-between mb-2">
                         <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black
-                            {% if current_stage_num > stage.id or proposal.status == 'APPROVED' %}
+                            {% if stage.status == 'CLEARED' %}
                                 bg-emerald-600 text-white
-                            {% elif current_stage_num == stage.id %}
+                            {% elif stage.status == 'CURRENT' %}
                                 bg-amber-500 text-white animate-bounce
                             {% else %}
                                 bg-slate-200 text-slate-500
                             {% endif %}">
-                            {% if current_stage_num > stage.id or proposal.status == 'APPROVED' %}
+                            {% if stage.status == 'CLEARED' %}
                                 <i class="fa-solid fa-check"></i>
                             {% else %}
-                                {{ stage.id }}
+                                {{ stage.step }}
                             {% endif %}
                         </span>
                         
                         <span class="text-[10px] font-bold uppercase tracking-wider">
-                            {% if current_stage_num > stage.id or proposal.status == 'APPROVED' %}
+                            {% if stage.status == 'CLEARED' %}
                                 <span class="text-emerald-700">Cleared</span>
-                            {% elif current_stage_num == stage.id %}
+                            {% elif stage.status == 'CURRENT' %}
                                 <span class="text-amber-700">In Review</span>
                             {% else %}
                                 <span>Upcoming</span>
@@ -93,7 +103,7 @@
                     </div>
 
                     <div class="font-bold text-xs leading-tight mb-1">{{ stage.title }}</div>
-                    <div class="text-[10px] opacity-80">{{ stage.approver_role }}</div>
+                    <div class="text-[10px] opacity-80">Stage {{ stage.step }} Review</div>
                 </div>
             {% endfor %}
         </div>
@@ -105,14 +115,14 @@
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center space-x-2 text-slate-900 font-extrabold text-base">
                     <span class="w-3 h-3 rounded-full bg-amber-500 animate-ping"></span>
-                    <span>Action Required: You are the designated reviewer for this stage</span>
+                    <span>Action Required: You are the designated reviewer for Stage {{ proposal.stage_number }}: {{ proposal.current_stage_title }}</span>
                 </div>
                 <span class="text-xs font-bold text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full">
-                    {{ proposal.get_status_display }}
+                    Awaiting Your Clearance
                 </span>
             </div>
             <p class="text-xs text-slate-600 mb-6">
-                Review the event specifications, budget, and logistical requirements below. You may grant approval to advance the proposal, request a revision with detailed remarks, or reject the submission.
+                Inspect event parameters, budget, and logistical requirements. You may approve, request revisions with written justification, or reject.
             </p>
 
             <form method="POST" action="{% url 'process_approval' proposal.id %}" class="space-y-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -120,34 +130,34 @@
                 
                 <div>
                     <label class="block text-xs font-bold text-slate-800 mb-1">
-                        Reviewer Remarks / Feedback 
+                        Reviewer Remarks / Observations
                         <span class="font-normal text-slate-400">(Mandatory if requesting revision or rejecting)</span>
                     </label>
-                    <textarea name="remarks" rows="2" placeholder="Provide notes, required adjustments, or conditions of approval..."
+                    <textarea name="remarks" rows="2" placeholder="Record official remarks or required modifications..."
                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none"></textarea>
                 </div>
 
-                <!-- Special Dean of Accounts Budget Revision Section -->
-                {% if user_role == 'DEAN_ACCOUNTS' and proposal.status == 'STAGE_4_DEAN_ACCOUNTS' %}
-                    <div class="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
-                        <div class="flex items-center space-x-2 text-blue-900 font-bold text-xs">
-                            <i class="fa-solid fa-calculator text-blue-600"></i>
-                            <span>Dean of Accounts Special Privilege: Budget Sanction & Revision</span>
+                <!-- Dean of Finance Budget Revision Capability (₹ INR) -->
+                {% if proposal.current_stage_role == 'DEAN_ACCOUNTS' or user_role == 'DEAN_ACCOUNTS' %}
+                    <div class="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-3">
+                        <div class="flex items-center space-x-2 text-purple-900 font-bold text-xs">
+                            <i class="fa-solid fa-indian-rupee-sign text-purple-600"></i>
+                            <span>Dean of Finance & Accounts: Budget Scrutiny & Sanction</span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Currently Requested Budget</label>
-                                <div class="font-mono font-bold text-slate-900 text-sm">${{ proposal.requested_budget }}</div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Requested Budget</label>
+                                <div class="font-mono font-bold text-slate-900 text-sm">₹{{ proposal.requested_budget|floatformat:2 }}</div>
                             </div>
                             <div>
-                                <label class="block text-[11px] font-semibold text-blue-900 mb-1">Revise Sanctioned Amount ($)</label>
+                                <label class="block text-[11px] font-semibold text-purple-900 mb-1">Revise Sanctioned Amount (₹ INR)</label>
                                 <input type="number" step="0.01" name="new_budget" value="{{ proposal.approved_budget }}"
-                                       class="w-full px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                       class="w-full px-3 py-1.5 bg-white border border-purple-300 rounded-lg text-xs font-bold font-mono focus:ring-2 focus:ring-purple-500 focus:outline-none">
                             </div>
                         </div>
                         <button type="submit" name="action" value="REVISE_BUDGET" 
-                                class="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition">
-                            <i class="fa-solid fa-hand-holding-dollar mr-1.5"></i>Sanction Revised Budget & Forward to Director
+                                class="w-full sm:w-auto px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold rounded-lg shadow-sm transition">
+                            <i class="fa-solid fa-hand-holding-dollar mr-1.5"></i>Sanction Revised Budget & Forward Next
                         </button>
                     </div>
                 {% endif %}
@@ -157,8 +167,8 @@
                     <button type="submit" name="action" value="APPROVE" 
                             class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center">
                         <i class="fa-solid fa-check mr-1.5"></i>
-                        {% if proposal.status == 'STAGE_5_DEAN_ACADEMICS' %}
-                            Final Clearance & Notify Logistics
+                        {% if proposal.stage_number == total_stages %}
+                            Grant Final Executive Clearance (Notify Logistics & Publish)
                         {% else %}
                             Approve & Advance to Next Stage
                         {% endif %}
@@ -170,7 +180,7 @@
                     </button>
 
                     <button type="submit" name="action" value="REJECT" 
-                            onclick="return confirm('Are you sure you want to permanently reject this proposal?');"
+                            onclick="return confirm('Are you sure you want to reject this event proposal?');"
                             class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-sm transition flex items-center">
                         <i class="fa-solid fa-xmark mr-1.5"></i>Reject Proposal
                     </button>
@@ -186,7 +196,7 @@
         <div class="lg:col-span-2 space-y-6">
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                 <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider pb-3 border-b border-slate-100">
-                    Event Specifications & Objectives
+                    Event Specifications & Academic Objectives
                 </h3>
 
                 <div>
@@ -198,7 +208,7 @@
                     <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
                         <div class="text-[11px] font-bold text-slate-500 uppercase">Organizing Unit</div>
                         <div class="text-xs font-bold text-slate-800 mt-0.5">{{ proposal.organizing_unit.name }}</div>
-                        <div class="text-[10px] text-slate-500">{{ proposal.organizing_unit.get_unit_type_display }} (Head: {{ proposal.organizing_unit.head.get_full_name|default:proposal.organizing_unit.head.username }})</div>
+                        <div class="text-[10px] text-slate-500">{{ proposal.organizing_unit.get_unit_type_display }}</div>
                     </div>
 
                     <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -208,7 +218,7 @@
                     </div>
 
                     <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <div class="text-[11px] font-bold text-slate-500 uppercase">Guest Speaker / Expert</div>
+                        <div class="text-[11px] font-bold text-slate-500 uppercase">Chief Guest / Keynote</div>
                         <div class="text-xs font-bold text-slate-800 mt-0.5">{{ proposal.guest_speaker }}</div>
                     </div>
 
@@ -234,27 +244,27 @@
                     <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
                         Operational Logistics Orders
                     </h3>
-                    <span class="text-[11px] text-slate-500 font-medium">Auto-dispatched via Email on Stage 5 Clearance</span>
+                    <span class="text-[11px] text-slate-500 font-medium">Auto-dispatched via Email on Director Clearance</span>
                 </div>
 
                 <div class="space-y-3 text-xs">
                     <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                         <div class="font-bold text-slate-800 flex items-center mb-1">
-                            <i class="fa-solid fa-utensils text-brand-600 mr-2"></i>Mess & Catering Service
+                            <i class="fa-solid fa-utensils text-brand-600 mr-2"></i>Mess & Catering Section
                         </div>
                         <p class="text-slate-600">{{ proposal.mess_requirements|default:'No special catering requested.' }}</p>
                     </div>
 
                     <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                         <div class="font-bold text-slate-800 flex items-center mb-1">
-                            <i class="fa-solid fa-bus text-brand-600 mr-2"></i>Transport & Fleet Dispatch
+                            <i class="fa-solid fa-bus text-brand-600 mr-2"></i>Transport & Vehicle Fleet Section
                         </div>
-                        <p class="text-slate-600">{{ proposal.transport_requirements|default:'No campus transport required.' }}</p>
+                        <p class="text-slate-600">{{ proposal.transport_requirements|default:'No institute transport requested.' }}</p>
                     </div>
 
                     <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                         <div class="font-bold text-slate-800 flex items-center mb-1">
-                            <i class="fa-solid fa-wrench text-brand-600 mr-2"></i>Auditorium, AV & Maintenance
+                            <i class="fa-solid fa-wrench text-brand-600 mr-2"></i>Auditorium, Estate, AV & Genset
                         </div>
                         <p class="text-slate-600">{{ proposal.maintenance_requirements|default:'Standard hall facilities only.' }}</p>
                     </div>
@@ -282,29 +292,29 @@
             </div>
         </div>
 
-        <!-- Right: Budget & Complete Approval Audit Log -->
+        <!-- Right: Budget (₹) & Complete Approval Audit Log -->
         <div class="space-y-6">
             
             <!-- Financial Sanction Card -->
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                 <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider pb-3 border-b border-slate-100">
-                    Budget Summary
+                    Budget Summary (₹ INR)
                 </h3>
 
                 <div class="space-y-3">
                     <div class="flex items-center justify-between text-xs">
-                        <span class="text-slate-500">Requested Amount:</span>
-                        <span class="font-bold font-mono text-slate-900">${{ proposal.requested_budget }}</span>
+                        <span class="text-slate-500">Requested Budget:</span>
+                        <span class="font-bold font-mono text-slate-900">₹{{ proposal.requested_budget|floatformat:2 }}</span>
                     </div>
 
                     <div class="flex items-center justify-between text-xs">
-                        <span class="text-slate-500">Approved Allocation:</span>
-                        <span class="font-bold font-mono text-base text-emerald-700">${{ proposal.approved_budget }}</span>
+                        <span class="text-slate-500">Sanctioned Amount:</span>
+                        <span class="font-bold font-mono text-base text-emerald-700">₹{{ proposal.approved_budget|floatformat:2 }}</span>
                     </div>
 
                     {% if proposal.approved_budget != proposal.requested_budget %}
                         <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs">
-                            <div class="font-bold text-amber-900 mb-0.5">Budget Revised by Accounts</div>
+                            <div class="font-bold text-amber-900 mb-0.5">Budget Revised by Finance Office</div>
                             <div class="text-[11px] text-amber-800">{{ proposal.budget_revision_reason|default:'Adjusted to college financial cap.' }}</div>
                         </div>
                     {% endif %}
@@ -329,7 +339,7 @@
                                 <span class="absolute left-2 top-1 -translate-x-1/2 w-3.5 h-3.5 rounded-full border-2 border-white
                                     {% if log.action == 'APPROVED' %}bg-emerald-500
                                     {% elif log.action == 'REVISION_REQUESTED' %}bg-amber-500
-                                    {% elif log.action == 'BUDGET_REVISED' %}bg-blue-500
+                                    {% elif log.action == 'BUDGET_REVISED' %}bg-purple-500
                                     {% else %}bg-rose-500{% endif %}"></span>
 
                                 <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-2xs">
@@ -338,7 +348,7 @@
                                         <span class="text-[10px] font-bold px-1.5 py-0.5 rounded
                                             {% if log.action == 'APPROVED' %}bg-emerald-100 text-emerald-800
                                             {% elif log.action == 'REVISION_REQUESTED' %}bg-amber-100 text-amber-800
-                                            {% elif log.action == 'BUDGET_REVISED' %}bg-blue-100 text-blue-800
+                                            {% elif log.action == 'BUDGET_REVISED' %}bg-purple-100 text-purple-800
                                             {% else %}bg-rose-100 text-rose-800{% endif %}">
                                             {{ log.get_action_display }}
                                         </span>

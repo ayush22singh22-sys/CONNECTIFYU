@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{% if is_edit %}Revise Event Proposal{% else %}New Event Proposal{% endif %} - CEMS{% endblock %}
+{% block title %}{% if is_edit %}Revise Event Proposal{% else %}New Event Proposal{% endif %} - CEMS India{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto py-6">
@@ -13,15 +13,15 @@
                     {% if is_edit %}
                         Revise Proposal: <span class="text-brand-600">{{ proposal.title }}</span>
                     {% else %}
-                        Submit New Event Proposal
+                        Submit New College Event Proposal
                     {% endif %}
                 </h1>
                 <p class="text-xs text-slate-500 mt-1">
-                    Proposals are automatically routed through the 5-step approval chain (Unit Head &rarr; HR &rarr; Dean of Research &rarr; Dean of Accounts &rarr; Dean of Academics).
+                    Select your tailored approval pipeline with mandatory institutional scrutiny from Dean (Finance), Dean (Academics), and the Director.
                 </p>
             </div>
             <a href="{% url 'dashboard' %}" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">
-                <i class="fa-solid fa-arrow-left mr-1"></i>Cancel
+                <i class="fa-solid fa-arrow-left mr-1"></i>Back to Dashboard
             </a>
         </div>
 
@@ -36,89 +36,205 @@
                     "{{ latest_log.remarks }}"
                 </p>
                 <p class="text-[11px] text-amber-700 mt-2">
-                    &bull; Update the fields below and provide resubmission notes. When submitted, the proposal will restart the chain tagged visibly as <strong>Revision Cycle {{ proposal.revision_count|add:1 }}</strong>.
+                    &bull; Update the details below. Upon resubmission, the proposal will re-enter the approval pipeline tagged visibly as <strong>Revision Cycle {{ proposal.revision_count|add:1 }}</strong>.
                 </p>
             </div>
         {% endif %}
 
-        <form method="POST" class="space-y-6">
+        <form method="POST" class="space-y-6" id="proposalForm">
             {% csrf_token %}
 
-            <!-- Section 1: Basic Event Details -->
-            <div class="space-y-4">
+            <!-- SECTION 1: APPROVAL CHAIN CONFIGURATION (KEY REQUIREMENT) -->
+            <div class="p-6 bg-slate-50 rounded-2xl border-2 border-indigo-200 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center">
+                        <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] mr-2">1</span>
+                        Approval Chain Selection
+                    </h2>
+                    <span class="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                        Dean (Finance), Dean (Academics) & Director Mandatory
+                    </span>
+                </div>
+                <p class="text-xs text-slate-600">
+                    Choose an approval pipeline configured for your event category, or configure a custom chain:
+                </p>
+
+                <div class="grid grid-cols-1 gap-3">
+                    <!-- Option 1: Academic & Research -->
+                    <label class="relative flex items-start p-4 bg-white rounded-xl border-2 cursor-pointer transition hover:border-brand-500 has-checked:border-brand-600 has-checked:bg-brand-50/40">
+                        <input type="radio" name="chain_type" value="ACADEMIC" class="mt-1 text-brand-600 focus:ring-brand-500" 
+                               {% if not proposal or proposal.chain_type == 'ACADEMIC' %}checked{% endif %} onchange="toggleCustomChain(false)">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-900 block text-sm">Option A: Academic & Research Event Chain</span>
+                            <span class="text-slate-500 block mt-0.5">Recommended for National/International Conferences, Seminars, Workshops & FDPs.</span>
+                            <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                                <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">1. HOD</span> &rarr;
+                                <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">2. Dean (R&D)</span> &rarr;
+                                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">3. Dean (Finance)*</span> &rarr;
+                                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">4. Dean (Academics)*</span> &rarr;
+                                <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">5. Director (Clearance)*</span>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Option 2: Student Club / Fest -->
+                    <label class="relative flex items-start p-4 bg-white rounded-xl border-2 cursor-pointer transition hover:border-brand-500 has-checked:border-brand-600 has-checked:bg-brand-50/40">
+                        <input type="radio" name="chain_type" value="CLUB_FEST" class="mt-1 text-brand-600 focus:ring-brand-500"
+                               {% if proposal.chain_type == 'CLUB_FEST' %}checked{% endif %} onchange="toggleCustomChain(false)">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-900 block text-sm">Option B: Student Club, Cultural & Sports Fest Chain</span>
+                            <span class="text-slate-500 block mt-0.5">Recommended for Hackathons, Technical Fests, Cultural Nights, Society Competitions.</span>
+                            <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                                <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">1. Club Faculty Advisor</span> &rarr;
+                                <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">2. Dean of Student Welfare (DSW)</span> &rarr;
+                                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">3. Dean (Finance)*</span> &rarr;
+                                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">4. Dean (Academics)*</span> &rarr;
+                                <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">5. Director (Clearance)*</span>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Option 3: Institute Mega Event -->
+                    <label class="relative flex items-start p-4 bg-white rounded-xl border-2 cursor-pointer transition hover:border-brand-500 has-checked:border-brand-600 has-checked:bg-brand-50/40">
+                        <input type="radio" name="chain_type" value="INSTITUTE_MEGA" class="mt-1 text-brand-600 focus:ring-brand-500"
+                               {% if proposal.chain_type == 'INSTITUTE_MEGA' %}checked{% endif %} onchange="toggleCustomChain(false)">
+                        <div class="ml-3 text-xs">
+                            <span class="font-bold text-slate-900 block text-sm">Option C: Institute-Wide Mega Event & Conclave Chain</span>
+                            <span class="text-slate-500 block mt-0.5">Recommended for Annual Convocation, Foundation Day, Industry-Academia Conclaves.</span>
+                            <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                                <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">1. Registrar / Establishment (HR)</span> &rarr;
+                                <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">2. Dean (Research & Planning)</span> &rarr;
+                                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">3. Dean (Finance)*</span> &rarr;
+                                <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded border border-purple-200">4. Dean (Academics)*</span> &rarr;
+                                <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">5. Director (Clearance)*</span>
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Option 4: Custom Chain Builder -->
+                    <label class="relative flex items-start p-4 bg-white rounded-xl border-2 cursor-pointer transition hover:border-brand-500 has-checked:border-brand-600 has-checked:bg-brand-50/40">
+                        <input type="radio" name="chain_type" value="CUSTOM" class="mt-1 text-brand-600 focus:ring-brand-500"
+                               {% if proposal.chain_type == 'CUSTOM' %}checked{% endif %} onchange="toggleCustomChain(true)">
+                        <div class="ml-3 text-xs w-full">
+                            <span class="font-bold text-slate-900 block text-sm">Option D: Custom Approval Chain Builder</span>
+                            <span class="text-slate-500 block mt-0.5">Customize your preliminary stages. Dean (Finance), Dean (Academics), and Director remain locked & mandatory.</span>
+
+                            <!-- Unfolded Custom Stage Builder -->
+                            <div id="customChainBuilder" class="{% if proposal.chain_type != 'CUSTOM' %}hidden{% endif %} mt-4 p-4 bg-slate-100/80 rounded-xl border border-slate-300 space-y-3">
+                                <div class="text-[11px] font-bold text-slate-700 uppercase">Select Preliminary Reviewers:</div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
+                                        <input type="checkbox" name="custom_roles" value="HOD" class="rounded text-brand-600">
+                                        <span>Head of Department (HOD)</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
+                                        <input type="checkbox" name="custom_roles" value="CLUB_HEAD" class="rounded text-brand-600">
+                                        <span>Faculty Advisor / Club Head</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
+                                        <input type="checkbox" name="custom_roles" value="REGISTRAR" class="rounded text-brand-600">
+                                        <span>Registrar / HR Section</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
+                                        <input type="checkbox" name="custom_roles" value="DEAN_RESEARCH" class="rounded text-brand-600">
+                                        <span>Dean of Research & Consultancy (R&D)</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
+                                        <input type="checkbox" name="custom_roles" value="DEAN_STUDENT_WELFARE" class="rounded text-brand-600">
+                                        <span>Dean of Student Welfare (DSW)</span>
+                                    </label>
+                                </div>
+
+                                <div class="pt-2 border-t border-slate-200">
+                                    <div class="text-[11px] font-bold text-purple-900 uppercase mb-1">Locked Statutory Institutional Stages:</div>
+                                    <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-purple-800 font-semibold">
+                                        <span class="bg-purple-100 px-2 py-0.5 rounded border border-purple-300">✔ Dean (Finance & Accounts) - Mandatory</span> &rarr;
+                                        <span class="bg-purple-100 px-2 py-0.5 rounded border border-purple-300">✔ Dean (Academic Affairs) - Mandatory</span> &rarr;
+                                        <span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-300">✔ Director of Institute - Final Clearance</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- SECTION 2: BASIC EVENT DETAILS -->
+            <div class="space-y-4 pt-2">
                 <h2 class="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center">
-                    <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">1</span>
-                    Basic Event Information
+                    <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">2</span>
+                    Event Specifications & Academic Context
                 </h2>
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">Event Title *</label>
                     <input type="text" name="title" required value="{{ proposal.title|default:'' }}" 
-                           placeholder="e.g. Annual Symposium on Autonomous Robotics" 
+                           placeholder="e.g. National Symposium on Quantum Computing & Cyber Security 2026" 
                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Event Description & Objectives *</label>
-                    <textarea name="description" rows="3" required placeholder="Detailed objective, target audience, and expected outcomes..."
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Description & Expected Outcomes *</label>
+                    <textarea name="description" rows="3" required placeholder="Academic objectives, target audience (B.Tech/M.Tech/Ph.D.), industry partners, and expected outcome..."
                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.description|default:'' }}</textarea>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Organizing Unit (Dynamic Routing) *</label>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Organizing Department / Club / Society *</label>
                         <select name="organizing_unit" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
                             {% for unit in units %}
                                 <option value="{{ unit.id }}" {% if proposal.organizing_unit_id == unit.id %}selected{% endif %}>
-                                    {{ unit.name }} [{{ unit.get_unit_type_display }}] (Head: {{ unit.head.get_full_name|default:unit.head.username|default:'Unassigned' }})
+                                    {{ unit.name }} [{{ unit.get_unit_type_display }}]
                                 </option>
                             {% endfor %}
                         </select>
-                        <p class="text-[11px] text-slate-400 mt-1">Stage 1 approver dynamically resolves to this unit's HOD or Club President.</p>
                     </div>
 
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Co-Coordinator Details *</label>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Co-Coordinator / Organizing Secretary *</label>
                         <input type="text" name="co_coordinator" required value="{{ proposal.co_coordinator|default:'' }}"
-                               placeholder="e.g. Dr. Ada Lovelace (CS Dept, ext 4402)"
+                               placeholder="e.g. Dr. S. Radhakrishnan (CSE Dept, ext 4120)"
                                class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Keynote / Guest Speaker Profile *</label>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Chief Guest / Keynote Speaker Profile *</label>
                     <input type="text" name="guest_speaker" required value="{{ proposal.guest_speaker|default:'' }}"
-                           placeholder="e.g. Dr. Yann LeCun, Chief AI Scientist at Meta"
+                           placeholder="e.g. Prof. V. Kamakoti, Director of IIT Madras & Distinguished Scientist"
                            class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
-                    <p class="text-[11px] text-slate-400 mt-1">Vetted by the Dean of Research in Stage 3.</p>
                 </div>
             </div>
 
-            <!-- Section 2: Financials & Logistics Schedule -->
+            <!-- SECTION 3: BUDGET IN INDIAN RUPEES (₹) & VENUE -->
             <div class="space-y-4 pt-4 border-t border-slate-100">
                 <h2 class="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center">
-                    <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">2</span>
-                    Budget, Venue & Schedule
+                    <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">3</span>
+                    Financial Allocation (₹ INR) & Logistics Schedule
                 </h2>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Requested Budget ($) *</label>
-                        <input type="number" step="0.01" name="requested_budget" required value="{{ proposal.requested_budget|default:'1000.00' }}"
-                               class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
-                        <p class="text-[11px] text-slate-400 mt-1">Subject to Dean of Accounts adjustment in Stage 4.</p>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Requested Budget (₹ INR) *</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-2.5 text-slate-500 font-bold">₹</span>
+                            <input type="number" step="0.01" name="requested_budget" required value="{{ proposal.requested_budget|default:'50000.00' }}"
+                                   class="w-full pl-8 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold font-mono focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1">Reviewed & sanctioned by Dean (Finance).</p>
                     </div>
 
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">Expected Attendees *</label>
-                        <input type="number" name="expected_attendees" required value="{{ proposal.expected_attendees|default:'100' }}"
+                        <input type="number" name="expected_attendees" required value="{{ proposal.expected_attendees|default:'150' }}"
                                class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
                     </div>
 
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Venue / Auditorium *</label>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Campus Venue *</label>
                         <input type="text" name="venue" required value="{{ proposal.venue|default:'' }}"
-                               placeholder="e.g. APJ Kalam Auditorium"
+                               placeholder="e.g. Dr. APJ Abdul Kalam Central Auditorium"
                                class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">
                     </div>
                 </div>
@@ -140,53 +256,52 @@
                 </div>
             </div>
 
-            <!-- Section 3: Campus Operational Logistics -->
+            <!-- SECTION 4: CAMPUS OPERATIONAL LOGISTICS -->
             <div class="space-y-4 pt-4 border-t border-slate-100">
                 <div class="flex items-center justify-between">
                     <h2 class="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center">
-                        <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">3</span>
-                        Campus Logistics Requirements (Auto-Dispatched on Approval)
+                        <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] mr-2">4</span>
+                        Campus Logistics Orders (Auto-Dispatched on Director Clearance)
                     </h2>
                     <span class="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full font-semibold">
-                        Step 5 Automated Hook
+                        Automated Dispatch Hook
                     </span>
                 </div>
                 <p class="text-xs text-slate-500">
-                    Once the Dean of Academics grants final clearance, the system automatically emails these exact specifications to the college logistics offices.
+                    Once the Director approves, the system automatically emails these exact specifications to the college logistics sections.
                 </p>
 
                 <div class="space-y-3">
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">
-                            <i class="fa-solid fa-utensils text-slate-400 mr-1.5"></i>Mess & Catering Services
+                            <i class="fa-solid fa-utensils text-slate-400 mr-1.5"></i>Hostel Mess & Catering Services
                         </label>
-                        <textarea name="mess_requirements" rows="2" placeholder="e.g. Lunch for 150 guests + tea and biscuits for 2 breaks..."
+                        <textarea name="mess_requirements" rows="2" placeholder="e.g. High tea for 150 guests + packed lunch boxes for 2 days..."
                                   class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.mess_requirements|default:'' }}</textarea>
                     </div>
 
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">
-                            <i class="fa-solid fa-bus text-slate-400 mr-1.5"></i>Transport & Fleet Dispatch
+                            <i class="fa-solid fa-bus text-slate-400 mr-1.5"></i>Transport & Fleet Section
                         </label>
-                        <textarea name="transport_requirements" rows="2" placeholder="e.g. Airport pickup for guest speaker at 9:00 AM, shuttle bus for inter-campus attendees..."
+                        <textarea name="transport_requirements" rows="2" placeholder="e.g. Airport reception car for keynote speaker, shuttle bus from railway station..."
                                   class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.transport_requirements|default:'' }}</textarea>
                     </div>
 
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 mb-1">
-                            <i class="fa-solid fa-wrench text-slate-400 mr-1.5"></i>Auditorium, AV & Maintenance Setup
+                            <i class="fa-solid fa-wrench text-slate-400 mr-1.5"></i>Auditorium, Estate, AV & Genset Backup
                         </label>
-                        <textarea name="maintenance_requirements" rows="2" placeholder="e.g. Projector, podium mic, 2 collar mics, stage spotlight, AC turned on 1 hr prior..."
+                        <textarea name="maintenance_requirements" rows="2" placeholder="e.g. Dual 4K projectors, 2 cordless mics, podium setup, uninterrupted UPS/genset power..."
                                   class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:bg-white focus:outline-none">{{ proposal.maintenance_requirements|default:'' }}</textarea>
                     </div>
                 </div>
             </div>
 
             {% if is_edit %}
-                <!-- Resubmission Notes -->
                 <div class="pt-4 border-t border-slate-100">
                     <label class="block text-xs font-bold text-amber-900 mb-1">Resubmission Changes Summary *</label>
-                    <textarea name="resubmission_notes" required rows="2" placeholder="Describe the corrections made to address the previous reviewer's remarks..."
+                    <textarea name="resubmission_notes" required rows="2" placeholder="Detail the modifications made in response to the reviewer's revision remarks..."
                               class="w-full px-3.5 py-2.5 bg-amber-50/50 border border-amber-300 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white focus:outline-none"></textarea>
                 </div>
             {% endif %}
@@ -198,9 +313,9 @@
                 </a>
                 <button type="submit" class="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-brand-500/25 transition">
                     {% if is_edit %}
-                        <i class="fa-solid fa-paper-plane mr-1.5"></i>Resubmit to Approval Chain
+                        <i class="fa-solid fa-paper-plane mr-1.5"></i>Resubmit Proposal
                     {% else %}
-                        <i class="fa-solid fa-paper-plane mr-1.5"></i>Submit Proposal for Stage 1 Review
+                        <i class="fa-solid fa-paper-plane mr-1.5"></i>Submit for Multi-Stage Review
                     {% endif %}
                 </button>
             </div>
@@ -208,4 +323,15 @@
 
     </div>
 </div>
+
+<script>
+    function toggleCustomChain(show) {
+        const builder = document.getElementById('customChainBuilder');
+        if (show) {
+            builder.classList.remove('hidden');
+        } else {
+            builder.classList.add('hidden');
+        }
+    }
+</script>
 {% endblock %}

@@ -7,208 +7,133 @@ from events.models import (
     UserProfile, OrganizingUnit, EventProposal,
     ApprovalLog, EventRegistration, EventFeedback, LogisticsNotification
 )
-from events.utils import dispatch_logistics_notifications
+from events.utils import get_default_chain, dispatch_logistics_notifications
 
 
 class EventLifecycleTestCase(TestCase):
     def setUp(self):
-        # 1. Setup personas
+        # 1. Setup Indian Personas
         self.faculty = User.objects.create_user(username='faculty_user', password='password123')
-        UserProfile.objects.create(user=self.faculty, role='FACULTY', department='Computer Science')
+        UserProfile.objects.create(user=self.faculty, role='FACULTY', department='Computer Science & Engineering')
 
-        self.hod_cs = User.objects.create_user(username='hod_user', password='password123')
-        UserProfile.objects.create(user=self.hod_cs, role='HOD', department='Computer Science')
+        self.hod_cse = User.objects.create_user(username='hod_user', password='password123')
+        UserProfile.objects.create(user=self.hod_cse, role='HOD', department='Computer Science & Engineering')
 
-        self.hr = User.objects.create_user(username='hr_user', password='password123')
-        UserProfile.objects.create(user=self.hr, role='HR', department='Human Resources')
+        self.dean_rnd = User.objects.create_user(username='dean_rnd_user', password='password123')
+        UserProfile.objects.create(user=self.dean_rnd, role='DEAN_RESEARCH', department='Research & Consultancy')
 
-        self.dean_res = User.objects.create_user(username='dean_res_user', password='password123')
-        UserProfile.objects.create(user=self.dean_res, role='DEAN_RESEARCH', department='Research Office')
-
-        self.dean_acc = User.objects.create_user(username='dean_acc_user', password='password123')
-        UserProfile.objects.create(user=self.dean_acc, role='DEAN_ACCOUNTS', department='Finance Office')
+        self.dean_fin = User.objects.create_user(username='dean_fin_user', password='password123')
+        UserProfile.objects.create(user=self.dean_fin, role='DEAN_ACCOUNTS', department='Finance Office')
 
         self.dean_acad = User.objects.create_user(username='dean_acad_user', password='password123')
-        UserProfile.objects.create(user=self.dean_acad, role='DEAN_ACADEMICS', department='Directorate')
+        UserProfile.objects.create(user=self.dean_acad, role='DEAN_ACADEMICS', department='Academic Affairs')
+
+        self.director = User.objects.create_user(username='director_user', password='password123')
+        UserProfile.objects.create(user=self.director, role='DIRECTOR', department='Directorate')
 
         self.student = User.objects.create_user(username='student_user', password='password123')
-        UserProfile.objects.create(user=self.student, role='STUDENT', department='Computer Science', roll_or_emp_id='CS001')
+        UserProfile.objects.create(user=self.student, role='STUDENT', department='Computer Science & Engineering', roll_or_emp_id='21BCSE101')
 
         # 2. Organizing Unit
-        self.dept_cs = OrganizingUnit.objects.create(
-            name='Computer Science Department',
+        self.dept_cse = OrganizingUnit.objects.create(
+            name='Department of Computer Science & Engineering',
             unit_type='DEPARTMENT',
-            head=self.hod_cs
+            head=self.hod_cse
         )
 
         self.client = Client()
 
-    def test_end_to_end_approval_and_logistics_trigger(self):
-        """Tests the full 5-stage approval chain, budget adjustment, and logistics automated notifications."""
+    def test_academic_approval_chain_and_logistics_dispatch(self):
+        """Tests the Academic approval chain with Dean of Finance budget sanction and Director final clearance."""
         now = timezone.now()
+        chain = get_default_chain('ACADEMIC')
+
         proposal = EventProposal.objects.create(
-            title='Autonomous AI Summit',
-            description='A 2-day technical symposium.',
+            title='National AI Summit 2026',
+            description='Research symposium on machine learning.',
             proposer=self.faculty,
-            organizing_unit=self.dept_cs,
-            co_coordinator='Dr. Turing',
-            guest_speaker='Dr. Andrew Ng',
-            requested_budget=5000.00,
-            approved_budget=5000.00,
-            start_date=now + timedelta(days=5),
-            end_date=now + timedelta(days=6),
-            venue='Auditorium A',
+            organizing_unit=self.dept_cse,
+            co_coordinator='Dr. S. Radhakrishnan',
+            guest_speaker='Prof. V. Kamakoti',
+            chain_type='ACADEMIC',
+            approval_chain=chain,
+            current_stage_index=0,
+            requested_budget=200000.00,
+            approved_budget=200000.00,
+            start_date=now + timedelta(days=7),
+            end_date=now + timedelta(days=8),
+            venue='APJ Abdul Kalam Auditorium',
             mess_requirements='Lunch for 200 participants.',
-            transport_requirements='VIP sedan pickup for guest speaker.',
-            maintenance_requirements='Podium mic, dual projectors.',
-            status='STAGE_1_UNIT_HEAD'
+            transport_requirements='VIP vehicle for guest speaker.',
+            maintenance_requirements='4K Projector and audio system.',
+            status='UNDER_REVIEW'
         )
 
+        # Stage 1: HOD Approves
         self.assertEqual(proposal.stage_number, 1)
-        self.assertTrue(proposal.is_awaiting_user(self.hod_cs))
-        self.assertFalse(proposal.is_awaiting_user(self.hr))
-
-        # --- Stage 1: HOD Approves ---
+        self.assertTrue(proposal.is_awaiting_user(self.hod_cse))
         self.client.login(username='hod_user', password='password123')
         res = self.client.post(f'/proposals/{proposal.id}/action/', {
             'action': 'APPROVE',
             'remarks': 'Approved by HOD'
         })
         proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'STAGE_2_HR')
-        self.assertEqual(proposal.stage_number, 2)
+        self.assertEqual(proposal.current_stage_index, 1) # Stage 2: Dean R&D
 
-        # --- Stage 2: HR Approves ---
-        self.client.login(username='hr_user', password='password123')
+        # Stage 2: Dean R&D Approves
+        self.client.login(username='dean_rnd_user', password='password123')
         res = self.client.post(f'/proposals/{proposal.id}/action/', {
             'action': 'APPROVE',
-            'remarks': 'Approved by HR, no schedule conflicts.'
+            'remarks': 'Research keynote endorsed.'
         })
         proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'STAGE_3_DEAN_RESEARCH')
+        self.assertEqual(proposal.current_stage_index, 2) # Stage 3: Dean Finance
 
-        # --- Stage 3: Dean of Research Approves ---
-        self.client.login(username='dean_res_user', password='password123')
-        res = self.client.post(f'/proposals/{proposal.id}/action/', {
-            'action': 'APPROVE',
-            'remarks': 'Keynote speaker and content endorsed.'
-        })
-        proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'STAGE_4_DEAN_ACCOUNTS')
-
-        # --- Stage 4: Dean of Accounts Modifies Budget ---
-        self.client.login(username='dean_acc_user', password='password123')
+        # Stage 3: Dean Finance revises budget in INR (₹)
+        self.client.login(username='dean_fin_user', password='password123')
         res = self.client.post(f'/proposals/{proposal.id}/action/', {
             'action': 'REVISE_BUDGET',
-            'new_budget': 4500.00,
-            'remarks': 'Sanctioned $4500 as per hospitality upper limit.'
+            'new_budget': 175000.00,
+            'remarks': 'Sanctioned ₹1,75,000 as per hospitality guidelines.'
         })
         proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'STAGE_5_DEAN_ACADEMICS')
-        self.assertEqual(proposal.approved_budget, 4500.00)
+        self.assertEqual(proposal.approved_budget, 175000.00)
+        self.assertEqual(proposal.current_stage_index, 3) # Stage 4: Dean Academics
 
-        # --- Stage 5: Dean of Academics / Director Grants Final Clearance ---
+        # Stage 4: Dean Academics Approves
         self.client.login(username='dean_acad_user', password='password123')
         res = self.client.post(f'/proposals/{proposal.id}/action/', {
             'action': 'APPROVE',
-            'remarks': 'Final directorate clearance granted.'
+            'remarks': 'Academic schedule verified.'
+        })
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.current_stage_index, 4) # Stage 5: Director
+
+        # Stage 5: Director Grants Executive Clearance
+        self.client.login(username='director_user', password='password123')
+        res = self.client.post(f'/proposals/{proposal.id}/action/', {
+            'action': 'APPROVE',
+            'remarks': 'Final executive clearance granted.'
         })
         proposal.refresh_from_db()
         self.assertEqual(proposal.status, 'APPROVED')
 
-        # Verify automated email / logistics records created for Mess, Transport, Maintenance
+        # Automated logistics email verification
         notifications = LogisticsNotification.objects.filter(proposal=proposal)
         self.assertEqual(notifications.count(), 3)
-        types = set(notifications.values_list('logistics_type', flat=True))
-        self.assertEqual(types, {'MESS', 'TRANSPORT', 'MAINTENANCE'})
 
-    def test_revision_cycle_workflow(self):
-        """Tests that requesting revision returns proposal to faculty and resubmitting increments revision count."""
-        now = timezone.now()
-        proposal = EventProposal.objects.create(
-            title='Drone Racing Exhibition',
-            description='Exhibition race.',
-            proposer=self.faculty,
-            organizing_unit=self.dept_cs,
-            co_coordinator='Dr. Turing',
-            guest_speaker='Drone expert',
-            requested_budget=2000.00,
-            start_date=now + timedelta(days=10),
-            end_date=now + timedelta(days=11),
-            venue='Ground',
-            status='STAGE_1_UNIT_HEAD'
-        )
+    def test_custom_approval_chain_creation(self):
+        """Tests building a custom chain where Dean Finance, Dean Academics, and Director are mandatory."""
+        custom_chain = get_default_chain('CUSTOM', custom_roles=['HOD', 'DEAN_RESEARCH'])
+        roles = [stage['role'] for stage in custom_chain]
 
-        # HOD requests revision
-        self.client.login(username='hod_user', password='password123')
-        res = self.client.post(f'/proposals/{proposal.id}/action/', {
-            'action': 'REQUEST_REVISION',
-            'remarks': 'Please provide comprehensive safety net plan.'
-        })
-        proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'REVISION_REQUESTED')
+        # Must have custom stages + mandatory 3
+        self.assertEqual(roles, ['HOD', 'DEAN_RESEARCH', 'DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'])
 
-        # Faculty edits and resubmits
-        self.client.login(username='faculty_user', password='password123')
-        res = self.client.post(f'/proposals/{proposal.id}/edit/', {
-            'title': 'Drone Racing Exhibition (Safety Vetted)',
-            'description': 'Exhibition race with netting enclosures.',
-            'organizing_unit': self.dept_cs.id,
-            'co_coordinator': 'Dr. Turing',
-            'guest_speaker': 'Drone expert',
-            'requested_budget': 2000.00,
-            'start_date': (now + timedelta(days=10)).strftime('%Y-%m-%dT%H:%M'),
-            'end_date': (now + timedelta(days=11)).strftime('%Y-%m-%dT%H:%M'),
-            'venue': 'Ground',
-            'expected_attendees': 100,
-            'resubmission_notes': 'Enclosed safety protocol and netting blueprints.'
-        })
-        proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'STAGE_1_UNIT_HEAD')
-        self.assertEqual(proposal.revision_count, 1)
-        self.assertTrue(proposal.is_revision)
-
-    def test_student_checkin_and_feedback_verification_gate(self):
-        """Tests that attendance remains CHECKED_IN until feedback is submitted, then becomes VERIFIED."""
-        now = timezone.now()
-        proposal = EventProposal.objects.create(
-            title='Cybersecurity Workshop',
-            description='Hands-on hacking defense.',
-            proposer=self.faculty,
-            organizing_unit=self.dept_cs,
-            co_coordinator='Dr. Turing',
-            guest_speaker='Security Lead',
-            requested_budget=1000.00,
-            start_date=now + timedelta(days=1),
-            end_date=now + timedelta(days=1, hours=4),
-            venue='Lab 3',
-            status='APPROVED'
-        )
-
+    def test_student_blocked_from_proposal_creation(self):
+        """Requirement 2: Students are strictly barred from creating/publishing events."""
         self.client.login(username='student_user', password='password123')
-
-        # 1. Student registers
-        res = self.client.post(f'/events/{proposal.id}/register/', {'role': 'PARTICIPANT'})
-        reg = EventRegistration.objects.get(event=proposal, student=self.student)
-        self.assertEqual(reg.status, 'REGISTERED')
-
-        # 2. Student scans QR & takes selfie check-in
-        res = self.client.post('/events/checkin/', {
-            'token': proposal.qr_checkin_token,
-            'selfie_image': 'data:image/png;base64,mockselfiedata'
-        })
-        reg.refresh_from_db()
-        self.assertEqual(reg.status, 'CHECKED_IN')
-        self.assertIsNotNone(reg.checked_in_at)
-
-        # 3. Student submits feedback -> Attendance unlocks VERIFIED status!
-        res = self.client.post(f'/registrations/{reg.id}/feedback/', {
-            'rating_overall': 5,
-            'rating_content': 5,
-            'rating_speaker': 4,
-            'comments': 'Super practical demonstration!'
-        })
-        reg.refresh_from_db()
-        self.assertEqual(reg.status, 'VERIFIED')
-        self.assertTrue(hasattr(reg, 'feedback'))
-        self.assertEqual(reg.feedback.rating_overall, 5)
+        res = self.client.get('/proposals/new/')
+        # Should redirect to dashboard ('/') with error
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.url, '/')

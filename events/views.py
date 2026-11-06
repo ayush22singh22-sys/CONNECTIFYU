@@ -5,14 +5,14 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from django.http import JsonResponse, HttpResponseForbidden
 
 from .models import (
     UserProfile, OrganizingUnit, EventProposal,
     ApprovalLog, EventRegistration, EventFeedback, LogisticsNotification
 )
-from .utils import generate_qr_base64, dispatch_logistics_notifications
+from .utils import generate_qr_base64, dispatch_logistics_notifications, get_default_chain
 
 
 def login_view(request):
@@ -39,12 +39,15 @@ def logout_view(request):
 
 
 def switch_user_view(request, username):
-    """Demo feature: seamlessly switch to any role for presentation demos."""
+    """
+    Requirement 1: Always cleanly default to the dashboard screen
+    when switching between entities (Student, Organizer, HOD, Deans, Director).
+    """
     user = get_object_or_404(User, username=username)
     login(request, user)
     role_name = user.profile.get_role_display() if hasattr(user, 'profile') else 'User'
-    messages.info(request, f"Switched active identity to: {user.get_full_name() or user.username} ({role_name})")
-    return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
+    messages.info(request, f"Switched identity to: {user.get_full_name() or user.username} ({role_name})")
+    return redirect('dashboard')
 
 
 def register_student_view(request):
@@ -61,7 +64,7 @@ def register_student_view(request):
         password = request.POST.get('password')
 
         if User.objects.filter(username=username).exists():
-            messages.error(request, "Username already exists.")
+            messages.error(request, "Username / Roll Number already registered.")
             return render(request, 'registration/register.html')
 
         user = User.objects.create_user(
@@ -78,7 +81,7 @@ def register_student_view(request):
             roll_or_emp_id=roll_no
         )
         login(request, user)
-        messages.success(request, "Student registration successful! Welcome to CEMS.")
+        messages.success(request, f"Namaste {first_name}! Welcome to the College Event Management System.")
         return redirect('dashboard')
 
     return render(request, 'registration/register.html')
@@ -86,41 +89,46 @@ def register_student_view(request):
 
 @login_required
 def dashboard_view(request):
+    """
+    Default screen for EVERY entity:
+    - Students see their dedicated Student Dashboard with their registrations, verified status, and campus events.
+    - Faculty/Organizers see proposal pipeline & live tools.
+    - Approvers (HOD, Deans, Director) see their actionable review queue.
+    """
     user = request.user
     profile = getattr(user, 'profile', None)
     role = profile.role if profile else 'STUDENT'
 
+    # --- 1. DEDICATED STUDENT DASHBOARD ---
     if role == 'STUDENT':
-        return redirect('student_events')
+        registrations = EventRegistration.objects.filter(student=user).select_related('event', 'event__organizing_unit').order_by('-registered_at')
+        verified_count = registrations.filter(status='VERIFIED').count()
+        checked_in_count = registrations.filter(status='CHECKED_IN').count()
+        upcoming_events = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).order_by('start_date')[:6]
 
-    # For Faculty / Proposers
+        context = {
+            'is_student': True,
+            'role': 'STUDENT',
+            'profile': profile,
+            'registrations': registrations,
+            'verified_count': verified_count,
+            'checked_in_count': checked_in_count,
+            'upcoming_events': upcoming_events,
+        }
+        return render(request, 'events/dashboard.html', context)
+
+    # --- 2. FACULTY, APPROVER & EXECUTIVE DASHBOARD ---
     my_proposals = EventProposal.objects.filter(proposer=user).order_by('-created_at')
 
-    # For Approvers
-    pending_approvals = []
-    if role == 'HOD':
-        pending_approvals = EventProposal.objects.filter(
-            status='STAGE_1_UNIT_HEAD',
-            organizing_unit__unit_type='DEPARTMENT'
-        ).order_by('-updated_at')
-    elif role == 'CLUB_HEAD':
-        pending_approvals = EventProposal.objects.filter(
-            status='STAGE_1_UNIT_HEAD',
-            organizing_unit__unit_type='CLUB'
-        ).order_by('-updated_at')
-    elif role == 'HR':
-        pending_approvals = EventProposal.objects.filter(status='STAGE_2_HR').order_by('-updated_at')
-    elif role == 'DEAN_RESEARCH':
-        pending_approvals = EventProposal.objects.filter(status='STAGE_3_DEAN_RESEARCH').order_by('-updated_at')
-    elif role == 'DEAN_ACCOUNTS':
-        pending_approvals = EventProposal.objects.filter(status='STAGE_4_DEAN_ACCOUNTS').order_by('-updated_at')
-    elif role == 'DEAN_ACADEMICS':
-        pending_approvals = EventProposal.objects.filter(status='STAGE_5_DEAN_ACADEMICS').order_by('-updated_at')
+    # Find all proposals waiting for this specific user's approval
+    all_under_review = EventProposal.objects.filter(status='UNDER_REVIEW').order_by('-updated_at')
+    pending_approvals = [p for p in all_under_review if p.is_awaiting_user(user)]
 
-    # All approved events across campus
     all_approved = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).order_by('-start_date')[:6]
+    total_sanctioned_budget = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).aggregate(Sum('approved_budget'))['approved_budget__sum'] or 0
 
     context = {
+        'is_student': False,
         'role': role,
         'profile': profile,
         'my_proposals': my_proposals,
@@ -131,6 +139,7 @@ def dashboard_view(request):
             'approved_count': EventProposal.objects.filter(status='APPROVED').count(),
             'revision_count': EventProposal.objects.filter(status='REVISION_REQUESTED').count(),
             'total_students': UserProfile.objects.filter(role='STUDENT').count(),
+            'total_budget_sanctioned': total_sanctioned_budget,
         }
     }
     return render(request, 'events/dashboard.html', context)
@@ -138,9 +147,15 @@ def dashboard_view(request):
 
 @login_required
 def create_proposal_view(request):
+    """
+    Requirement 2 & 4:
+    - Students are STRICTLY barred from creating/publishing events.
+    - Publishers can choose between 3 preset approval chains or build a CUSTOM chain.
+    - Dean of Finance, Dean of Academics, and Director are MANDATORY in all chains.
+    """
     profile = getattr(request.user, 'profile', None)
-    if profile and profile.role not in ['FACULTY', 'CLUB_HEAD', 'HOD', 'ADMIN', 'DEAN_ACADEMICS']:
-        messages.error(request, "Only faculty and club heads can submit new event proposals.")
+    if not profile or profile.role == 'STUDENT':
+        messages.error(request, "Access Denied: Students are not authorized to propose or publish college events.")
         return redirect('dashboard')
 
     units = OrganizingUnit.objects.all().order_by('name')
@@ -155,7 +170,12 @@ def create_proposal_view(request):
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
         venue = request.POST.get('venue')
-        expected_attendees = request.POST.get('expected_attendees', 50)
+        expected_attendees = request.POST.get('expected_attendees', 100)
+
+        # Approval Chain Selection
+        chain_type = request.POST.get('chain_type', 'ACADEMIC')
+        custom_roles = request.POST.getlist('custom_roles') if chain_type == 'CUSTOM' else None
+        chain_list = get_default_chain(chain_type, custom_roles)
 
         mess_req = request.POST.get('mess_requirements', '')
         transport_req = request.POST.get('transport_requirements', '')
@@ -176,13 +196,18 @@ def create_proposal_view(request):
             end_date=end_date,
             venue=venue,
             expected_attendees=expected_attendees,
+            chain_type=chain_type,
+            approval_chain=chain_list,
+            current_stage_index=0,
             mess_requirements=mess_req,
             transport_requirements=transport_req,
             maintenance_requirements=maint_req,
-            status='STAGE_1_UNIT_HEAD'
+            status='UNDER_REVIEW'
         )
 
-        messages.success(request, f"Event proposal '{proposal.title}' submitted! Routed to Stage 1: {unit.get_unit_type_display()} Head.")
+        first_stage = proposal.current_stage
+        stage_title = first_stage.get('title', 'Stage 1') if first_stage else 'Stage 1'
+        messages.success(request, f"Event proposal '{proposal.title}' submitted! Routed to Stage 1: {stage_title}.")
         return redirect('proposal_detail', proposal_id=proposal.id)
 
     return render(request, 'events/proposal_form.html', {'units': units, 'is_edit': False})
@@ -190,10 +215,10 @@ def create_proposal_view(request):
 
 @login_required
 def edit_proposal_view(request, proposal_id):
-    """Allows proposer to fix remarks and resubmit proposal through the full chain."""
+    """Allows proposer to fix remarks and resubmit proposal through the full chain from Stage 1."""
     proposal = get_object_or_404(EventProposal, id=proposal_id, proposer=request.user)
     if proposal.status != 'REVISION_REQUESTED':
-        messages.warning(request, "This proposal is not currently in revision status.")
+        messages.warning(request, "This proposal is not currently marked for revision.")
         return redirect('proposal_detail', proposal_id=proposal.id)
 
     units = OrganizingUnit.objects.all().order_by('name')
@@ -210,28 +235,39 @@ def edit_proposal_view(request, proposal_id):
         proposal.start_date = request.POST.get('start_date')
         proposal.end_date = request.POST.get('end_date')
         proposal.venue = request.POST.get('venue')
-        proposal.expected_attendees = request.POST.get('expected_attendees', 50)
+        proposal.expected_attendees = request.POST.get('expected_attendees', 100)
         proposal.mess_requirements = request.POST.get('mess_requirements', '')
         proposal.transport_requirements = request.POST.get('transport_requirements', '')
         proposal.maintenance_requirements = request.POST.get('maintenance_requirements', '')
 
-        # Resubmit into Stage 1 with Revision badge
-        proposal.status = 'STAGE_1_UNIT_HEAD'
+        # Optionally update approval chain if requested
+        new_chain_type = request.POST.get('chain_type', proposal.chain_type)
+        if new_chain_type != proposal.chain_type or new_chain_type == 'CUSTOM':
+            custom_roles = request.POST.getlist('custom_roles') if new_chain_type == 'CUSTOM' else None
+            proposal.chain_type = new_chain_type
+            proposal.approval_chain = get_default_chain(new_chain_type, custom_roles)
+        else:
+            # Reset existing chain statuses to start from step 1
+            for idx, st in enumerate(proposal.approval_chain, start=1):
+                st['status'] = 'PENDING' if idx == 1 else 'WAITING'
+
+        # Reset to Step 1 and increment revision cycle
+        proposal.status = 'UNDER_REVIEW'
+        proposal.current_stage_index = 0
         proposal.revision_count += 1
         proposal.is_revision = True
         proposal.save()
 
-        # Log resubmission
         ApprovalLog.objects.create(
             proposal=proposal,
             approver=request.user,
-            stage_name=f'Resubmission (Cycle {proposal.revision_count})',
+            stage_name=f'Resubmission (Revision Cycle {proposal.revision_count})',
             action='APPROVED',
             remarks=request.POST.get('resubmission_notes', 'Addressed revision remarks and resubmitted to approval chain.'),
             revision_cycle=proposal.revision_count
         )
 
-        messages.success(request, f"Proposal updated and re-routed to Stage 1 with 'Revision Cycle {proposal.revision_count}' tag.")
+        messages.success(request, f"Proposal updated and re-routed to Stage 1 marked as 'Revision Cycle {proposal.revision_count}'.")
         return redirect('proposal_detail', proposal_id=proposal.id)
 
     return render(request, 'events/proposal_form.html', {
@@ -251,16 +287,31 @@ def proposal_detail_view(request, proposal_id):
     logs = proposal.logs.all().order_by('-created_at')
     logistics = proposal.logistics_notifications.all()
 
-    # Stages definition for visual progress tracker
-    stages = [
-        {'id': 1, 'code': 'STAGE_1_UNIT_HEAD', 'title': 'Unit Head (HOD / Club)', 'approver_role': 'HOD/Club Head'},
-        {'id': 2, 'code': 'STAGE_2_HR', 'title': 'Human Resources (HR)', 'approver_role': 'HR Review'},
-        {'id': 3, 'code': 'STAGE_3_DEAN_RESEARCH', 'title': 'Dean of Research', 'approver_role': 'Academic Vetting'},
-        {'id': 4, 'code': 'STAGE_4_DEAN_ACCOUNTS', 'title': 'Dean of Accounts', 'approver_role': 'Budget Sanction'},
-        {'id': 5, 'code': 'STAGE_5_DEAN_ACADEMICS', 'title': 'Dean Academics / Director', 'approver_role': 'Executive Clearance'},
-    ]
+    # Dynamic stages from the proposal's configured chain
+    chain = proposal.approval_chain or []
+    current_index = proposal.current_stage_index
 
-    current_stage_num = proposal.stage_number
+    stages = []
+    for idx, st in enumerate(chain):
+        step_num = idx + 1
+        if proposal.status == 'APPROVED' or proposal.status == 'COMPLETED':
+            status = 'CLEARED'
+        elif proposal.status == 'UNDER_REVIEW':
+            if idx < current_index:
+                status = 'CLEARED'
+            elif idx == current_index:
+                status = 'CURRENT'
+            else:
+                status = 'WAITING'
+        else:
+            status = 'STOPPED' if idx == current_index else 'WAITING'
+
+        stages.append({
+            'step': step_num,
+            'role': st.get('role'),
+            'title': st.get('title'),
+            'status': status,
+        })
 
     context = {
         'proposal': proposal,
@@ -269,7 +320,8 @@ def proposal_detail_view(request, proposal_id):
         'logs': logs,
         'logistics': logistics,
         'stages': stages,
-        'current_stage_num': current_stage_num,
+        'current_stage_num': current_index + 1,
+        'total_stages': len(chain),
         'user_role': getattr(request.user.profile, 'role', 'STUDENT') if hasattr(request.user, 'profile') else 'STUDENT',
     }
     return render(request, 'events/proposal_detail.html', context)
@@ -290,99 +342,109 @@ def process_approval_view(request, proposal_id):
     profile = request.user.profile
 
     if action in ['REJECT', 'REQUEST_REVISION'] and not remarks:
-        messages.error(request, "Written remarks are mandatory when rejecting or requesting a revision.")
+        messages.error(request, "Written remarks are mandatory when requesting a revision or rejecting.")
         return redirect('proposal_detail', proposal_id=proposal_id)
 
-    current_status = proposal.status
+    chain = proposal.approval_chain or []
+    current_idx = proposal.current_stage_index
+    current_stage_dict = chain[current_idx] if current_idx < len(chain) else {}
+    current_stage_title = current_stage_dict.get('title', f"Stage {current_idx + 1}")
 
     if action == 'APPROVE':
-        stage_names = {
-            'STAGE_1_UNIT_HEAD': 'Stage 1: Organizing Unit Head',
-            'STAGE_2_HR': 'Stage 2: HR Review',
-            'STAGE_3_DEAN_RESEARCH': 'Stage 3: Dean of Research',
-            'STAGE_4_DEAN_ACCOUNTS': 'Stage 4: Dean of Accounts',
-            'STAGE_5_DEAN_ACADEMICS': 'Stage 5: Dean of Academics / Director',
-        }
-        next_status_map = {
-            'STAGE_1_UNIT_HEAD': 'STAGE_2_HR',
-            'STAGE_2_HR': 'STAGE_3_DEAN_RESEARCH',
-            'STAGE_3_DEAN_RESEARCH': 'STAGE_4_DEAN_ACCOUNTS',
-            'STAGE_4_DEAN_ACCOUNTS': 'STAGE_5_DEAN_ACADEMICS',
-            'STAGE_5_DEAN_ACADEMICS': 'APPROVED',
-        }
-
-        next_status = next_status_map[current_status]
-        proposal.status = next_status
-
+        current_stage_dict['status'] = 'APPROVED'
         ApprovalLog.objects.create(
             proposal=proposal,
             approver=request.user,
-            stage_name=stage_names[current_status],
+            stage_name=current_stage_title,
             action='APPROVED',
-            remarks=remarks or "Approved without additional conditions.",
+            remarks=remarks or "Approved without additional stipulations.",
             revision_cycle=proposal.revision_count
         )
 
-        # If cleared Stage 5, automatically dispatch logistics emails & publish!
-        if next_status == 'APPROVED':
+        next_idx = current_idx + 1
+        if next_idx >= len(chain):
+            # Final stage approved!
+            proposal.status = 'APPROVED'
+            proposal.current_stage_index = next_idx
+            proposal.save()
             dispatch_logistics_notifications(proposal)
-            messages.success(request, f"Proposal '{proposal.title}' cleared all 5 stages! Logistics automatically notified and event is now published to students.")
+            messages.success(request, f"Executive clearance granted! '{proposal.title}' is approved, published to students, and college logistics sections have been notified.")
         else:
-            messages.success(request, f"Proposal approved! Advanced to {proposal.get_status_display()}.")
-
-        proposal.save()
+            # Advance to next stage
+            chain[next_idx]['status'] = 'PENDING'
+            proposal.current_stage_index = next_idx
+            proposal.approval_chain = chain
+            proposal.save()
+            next_stage_title = chain[next_idx].get('title', f"Stage {next_idx + 1}")
+            messages.success(request, f"Approved! Proposal advanced to Stage {next_idx + 1}: {next_stage_title}.")
 
     elif action == 'REVISE_BUDGET':
-        if profile.role != 'DEAN_ACCOUNTS' and current_status != 'STAGE_4_DEAN_ACCOUNTS':
-            messages.error(request, "Only the Dean of Accounts can revise budget allocations.")
+        if profile.role != 'DEAN_ACCOUNTS' and current_stage_dict.get('role') != 'DEAN_ACCOUNTS':
+            messages.error(request, "Only the Dean of Finance & Accounts can revise budget allocations.")
             return redirect('proposal_detail', proposal_id=proposal_id)
 
         try:
             new_budget = float(request.POST.get('new_budget', 0))
         except ValueError:
-            messages.error(request, "Invalid budget number provided.")
+            messages.error(request, "Invalid budget amount provided.")
             return redirect('proposal_detail', proposal_id=proposal_id)
 
         old_budget = proposal.approved_budget
         proposal.approved_budget = new_budget
         proposal.budget_revision_reason = remarks
-        proposal.status = 'STAGE_5_DEAN_ACADEMICS'
-        proposal.save()
 
+        current_stage_dict['status'] = 'APPROVED'
         ApprovalLog.objects.create(
             proposal=proposal,
             approver=request.user,
-            stage_name='Stage 4: Dean of Accounts',
+            stage_name=current_stage_title,
             action='BUDGET_REVISED',
             old_budget=old_budget,
             revised_budget=new_budget,
-            remarks=remarks or f"Budget adjusted from ${old_budget} to ${new_budget}.",
+            remarks=remarks or f"Budget adjusted from ₹{old_budget} to ₹{new_budget}.",
             revision_cycle=proposal.revision_count
         )
-        messages.success(request, f"Budget revised to ${new_budget}. Proposal routed to Stage 5: Dean of Academics.")
+
+        next_idx = current_idx + 1
+        if next_idx >= len(chain):
+            proposal.status = 'APPROVED'
+            proposal.current_stage_index = next_idx
+            proposal.save()
+            dispatch_logistics_notifications(proposal)
+        else:
+            chain[next_idx]['status'] = 'PENDING'
+            proposal.current_stage_index = next_idx
+            proposal.approval_chain = chain
+            proposal.save()
+
+        messages.success(request, f"Budget revised to ₹{new_budget:,.2f}. Proposal advanced to next stage.")
 
     elif action == 'REQUEST_REVISION':
+        current_stage_dict['status'] = 'REVISION_REQUESTED'
         proposal.status = 'REVISION_REQUESTED'
+        proposal.approval_chain = chain
         proposal.save()
 
         ApprovalLog.objects.create(
             proposal=proposal,
             approver=request.user,
-            stage_name=proposal.get_status_display(),
+            stage_name=current_stage_title,
             action='REVISION_REQUESTED',
             remarks=remarks,
             revision_cycle=proposal.revision_count
         )
-        messages.warning(request, f"Proposal sent back for revision to {proposal.proposer.get_full_name() or proposal.proposer.username}.")
+        messages.warning(request, f"Proposal returned for revision to {proposal.proposer.get_full_name() or proposal.proposer.username}.")
 
     elif action == 'REJECT':
+        current_stage_dict['status'] = 'REJECTED'
         proposal.status = 'REJECTED'
+        proposal.approval_chain = chain
         proposal.save()
 
         ApprovalLog.objects.create(
             proposal=proposal,
             approver=request.user,
-            stage_name=proposal.get_status_display(),
+            stage_name=current_stage_title,
             action='REJECTED',
             remarks=remarks,
             revision_cycle=proposal.revision_count
@@ -398,8 +460,7 @@ def process_approval_view(request, proposal_id):
 def student_events_view(request):
     """Students browse approved events and register."""
     published_events = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).order_by('start_date')
-    
-    # Check registration status for current student
+
     user_registrations = {}
     if hasattr(request.user, 'event_registrations'):
         for reg in request.user.event_registrations.all():
@@ -428,7 +489,7 @@ def event_register_view(request, proposal_id):
             messages.info(request, f"Your registration role for '{proposal.title}' was updated to {reg.get_role_display()}.")
         else:
             messages.success(request, f"Successfully registered for '{proposal.title}' as {reg.get_role_display()}!")
-        return redirect('my_registrations')
+        return redirect('dashboard')
 
     return redirect('student_events')
 
@@ -445,8 +506,7 @@ def my_registrations_view(request):
 def live_event_view(request, proposal_id):
     """Faculty / Organizer screen to project QR code on auditorium screen."""
     proposal = get_object_or_404(EventProposal, id=proposal_id)
-    
-    # Base URL for check-in
+
     checkin_url = request.build_absolute_uri(f"/events/checkin/?token={proposal.qr_checkin_token}")
     qr_data_uri = generate_qr_base64(checkin_url)
 
@@ -484,7 +544,6 @@ def checkin_view(request):
         selfie_b64 = request.POST.get('selfie_image', '')
         proposal = get_object_or_404(EventProposal, qr_checkin_token=token)
 
-        # Get or auto-register student
         reg, _ = EventRegistration.objects.get_or_create(
             event=proposal,
             student=request.user,
@@ -496,7 +555,7 @@ def checkin_view(request):
         reg.selfie_image = selfie_b64
         reg.save()
 
-        messages.success(request, f"Check-in verified via selfie! Please complete the quick mandatory feedback below to finalize your attendance.")
+        messages.success(request, f"Check-in verified via selfie! Please complete the quick mandatory feedback below to verify your attendance.")
         return redirect('event_feedback', registration_id=reg.id)
 
     context = {
@@ -517,7 +576,7 @@ def feedback_view(request, registration_id):
 
     if hasattr(reg, 'feedback'):
         messages.info(request, "You have already completed feedback for this event.")
-        return redirect('my_registrations')
+        return redirect('dashboard')
 
     if request.method == 'POST':
         rating_overall = int(request.POST.get('rating_overall', 5))
@@ -533,12 +592,11 @@ def feedback_view(request, registration_id):
             comments=comments
         )
 
-        # Transition to fully VERIFIED attendance!
         reg.status = 'VERIFIED'
         reg.save()
 
-        messages.success(request, "Feedback received! Your official event attendance has been VERIFIED.")
-        return redirect('my_registrations')
+        messages.success(request, "Dhanyavaad! Feedback received and your event attendance has been officially VERIFIED.")
+        return redirect('dashboard')
 
     return render(request, 'events/feedback.html', {'registration': reg})
 
@@ -580,7 +638,7 @@ def compliance_report_view(request, proposal_id):
             'attendance_rate': round((total_verified / total_registered * 100), 1) if total_registered > 0 else 0,
             'budget_variance': budget_variance,
             'avg_overall': round(avg_ratings['avg_overall'] or 0, 1),
-            'avg_content': round(avg_content := avg_ratings['avg_content'] or 0, 1),
+            'avg_content': round(avg_ratings['avg_content'] or 0, 1),
             'avg_speaker': round(avg_ratings['avg_speaker'] or 0, 1),
             'feedback_count': avg_ratings['total_count'],
         },

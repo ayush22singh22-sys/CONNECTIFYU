@@ -1,35 +1,28 @@
-from django.contrib.auth.models import User
-from events.models import UserProfile, EventProposal
+from events.models import EventProposal
 
 def demo_roles_processor(request):
-    """Provides demo user accounts and quick stats for the global navigation."""
+    """Provides authentic Indian college demo user accounts and live pending review counters."""
     demo_accounts = [
-        {'username': 'faculty', 'label': 'Faculty / Proposer', 'name': 'Prof. Alan Turing', 'role': 'FACULTY'},
-        {'username': 'hod_cs', 'label': 'HOD (CS Dept)', 'name': 'Dr. Grace Hopper', 'role': 'HOD'},
-        {'username': 'club_head', 'label': 'Club President', 'name': 'Alex Johnson', 'role': 'CLUB_HEAD'},
-        {'username': 'hr_admin', 'label': 'HR Reviewer', 'name': 'Sarah Jenkins', 'role': 'HR'},
-        {'username': 'dean_research', 'label': 'Dean of Research', 'name': 'Dr. Richard Feynman', 'role': 'DEAN_RESEARCH'},
-        {'username': 'dean_accounts', 'label': 'Dean of Accounts', 'name': 'Dr. Milton Friedman', 'role': 'DEAN_ACCOUNTS'},
-        {'username': 'dean_academics', 'label': 'Dean of Academics / Director', 'name': 'Dr. APJ Kalam', 'role': 'DEAN_ACADEMICS'},
-        {'username': 'student1', 'label': 'Student 1', 'name': 'John Doe', 'role': 'STUDENT'},
-        {'username': 'student2', 'label': 'Student 2', 'name': 'Jane Smith', 'role': 'STUDENT'},
+        {'username': 'faculty', 'label': 'Faculty Coordinator', 'name': 'Prof. Rajesh Sharma', 'role': 'FACULTY'},
+        {'username': 'hod_cse', 'label': 'HOD (CSE Dept)', 'name': 'Dr. K. V. Ramanathan', 'role': 'HOD'},
+        {'username': 'club_lead', 'label': 'Club Faculty Advisor', 'name': 'Prof. Priya Nair', 'role': 'CLUB_HEAD'},
+        {'username': 'registrar', 'label': 'Registrar (Admin/HR)', 'name': 'Smt. Sunita Deshmukh', 'role': 'REGISTRAR'},
+        {'username': 'dean_research', 'label': 'Dean (R&D)', 'name': 'Dr. P. Venkatraman', 'role': 'DEAN_RESEARCH'},
+        {'username': 'dean_dsw', 'label': 'Dean (Student Welfare)', 'name': 'Dr. Alok Sen', 'role': 'DEAN_STUDENT_WELFARE'},
+        {'username': 'dean_finance', 'label': 'Dean (Finance & Accounts)', 'name': 'Dr. Suresh Chandra', 'role': 'DEAN_ACCOUNTS'},
+        {'username': 'dean_academics', 'label': 'Dean (Academics)', 'name': 'Dr. Meenakshi Sundaram', 'role': 'DEAN_ACADEMICS'},
+        {'username': 'director', 'label': 'Director of Institute', 'name': 'Dr. R. Chidambaram', 'role': 'DIRECTOR'},
+        {'username': 'student1', 'label': 'Student 1', 'name': 'Aarav Patel', 'role': 'STUDENT'},
+        {'username': 'student2', 'label': 'Student 2', 'name': 'Ananya Sen', 'role': 'STUDENT'},
     ]
 
     pending_count = 0
     if request.user.is_authenticated and hasattr(request.user, 'profile'):
         role = request.user.profile.role
-        if role == 'HOD':
-            pending_count = EventProposal.objects.filter(status='STAGE_1_UNIT_HEAD', organizing_unit__unit_type='DEPARTMENT').count()
-        elif role == 'CLUB_HEAD':
-            pending_count = EventProposal.objects.filter(status='STAGE_1_UNIT_HEAD', organizing_unit__unit_type='CLUB').count()
-        elif role == 'HR':
-            pending_count = EventProposal.objects.filter(status='STAGE_2_HR').count()
-        elif role == 'DEAN_RESEARCH':
-            pending_count = EventProposal.objects.filter(status='STAGE_3_DEAN_RESEARCH').count()
-        elif role == 'DEAN_ACCOUNTS':
-            pending_count = EventProposal.objects.filter(status='STAGE_4_DEAN_ACCOUNTS').count()
-        elif role == 'DEAN_ACADEMICS':
-            pending_count = EventProposal.objects.filter(status='STAGE_5_DEAN_ACADEMICS').count()
+        if role != 'STUDENT':
+            # Count proposals currently awaiting this user
+            all_proposals = EventProposal.objects.filter(status='UNDER_REVIEW')
+            pending_count = sum(1 for p in all_proposals if p.is_awaiting_user(request.user))
 
     return {
         'demo_accounts': demo_accounts,

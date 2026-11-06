@@ -33,9 +33,9 @@
     <div class="bg-indigo-950 text-indigo-100 text-xs px-4 py-2 border-b border-indigo-900 flex flex-wrap items-center justify-between gap-2 shadow-inner">
         <div class="flex items-center space-x-2 font-medium">
             <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-900 tracking-wide uppercase">
-                Demo Role Switcher
+                Demo Switcher
             </span>
-            <span>Switch active view instantly:</span>
+            <span>Switch Role (Defaults Directly to Dashboard):</span>
         </div>
         <div class="flex flex-wrap items-center gap-1.5">
             {% for acct in demo_accounts %}
@@ -59,7 +59,7 @@
                             <i class="fa-solid fa-graduation-cap text-lg"></i>
                         </div>
                         <div>
-                            <span class="text-lg font-bold tracking-tight text-slate-900 block leading-tight">CEMS</span>
+                            <span class="text-lg font-bold tracking-tight text-slate-900 block leading-tight">CEMS India</span>
                             <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">College Event Platform</span>
                         </div>
                     </a>
@@ -73,7 +73,7 @@
                         </a>
 
                         <a href="{% url 'student_events' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:text-brand-600 hover:bg-slate-100 transition">
-                            <i class="fa-solid fa-calendar-check mr-1.5 text-slate-400"></i>Browse Events
+                            <i class="fa-solid fa-calendar-check mr-1.5 text-slate-400"></i>Campus Events
                         </a>
 
                         {% if user.profile.role == 'STUDENT' %}
@@ -81,7 +81,7 @@
                                 <i class="fa-solid fa-ticket mr-1.5 text-slate-400"></i>My Registrations
                             </a>
                             <a href="{% url 'checkin' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition">
-                                <i class="fa-solid fa-qrcode mr-1.5"></i>Live Check-In
+                                <i class="fa-solid fa-qrcode mr-1.5"></i>QR & Selfie Check-In
                             </a>
                         {% endif %}
 
@@ -91,9 +91,9 @@
                             </a>
                         {% endif %}
 
-                        {% if pending_approvals_count > 0 %}
+                        {% if pending_approvals_count > 0 and user.profile.role != 'STUDENT' %}
                             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
-                                <i class="fa-solid fa-clock mr-1"></i>{{ pending_approvals_count }} Pending Review
+                                <i class="fa-solid fa-clock mr-1"></i>{{ pending_approvals_count }} Awaiting Review
                             </span>
                         {% endif %}
                     {% endif %}
@@ -162,11 +162,11 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-shield-halved text-brand-600"></i>
-                <span class="font-semibold text-slate-700">College Event Management System</span>
-                <span>&bull; Automated Multi-Stage Approval & Anti-Proxy Attendance</span>
+                <span class="font-semibold text-slate-700">College Event Management System (CEMS)</span>
+                <span>&bull; Indian Higher Education Framework</span>
             </div>
             <div>
-                Built with Python, Django, Tailwind CSS & HTML5 Camera API
+                Mandatory Approval Chain: Dean (Finance) &rarr; Dean (Academics) &rarr; Director
             </div>
         </div>
     </footer>

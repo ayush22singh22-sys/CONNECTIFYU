@@ -5,142 +5,269 @@
 {% block content %}
 <div class="space-y-6">
 
-    <!-- Welcome & Role Banner -->
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div class="flex items-center space-x-4">
-            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-md shadow-brand-500/20">
-                <i class="fa-solid fa-user-shield"></i>
-            </div>
-            <div>
-                <div class="flex items-center space-x-2">
-                    <h1 class="text-2xl font-extrabold text-slate-900">{{ user.get_full_name|default:user.username }}</h1>
-                    <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider 
-                        {% if role == 'HOD' or role == 'DEAN_ACADEMICS' %}bg-purple-100 text-purple-800 border border-purple-200
-                        {% elif role == 'DEAN_ACCOUNTS' or role == 'DEAN_RESEARCH' %}bg-blue-100 text-blue-800 border border-blue-200
-                        {% elif role == 'HR' %}bg-amber-100 text-amber-800 border border-amber-200
-                        {% elif role == 'FACULTY' or role == 'CLUB_HEAD' %}bg-emerald-100 text-emerald-800 border border-emerald-200
-                        {% else %}bg-slate-100 text-slate-700 border border-slate-200{% endif %}">
-                        {{ profile.get_role_display|default:role }}
-                    </span>
+    {% if is_student %}
+        <!-- ========================================== -->
+        <!-- DEDICATED STUDENT DASHBOARD (STUDENT VIEW) -->
+        <!-- ========================================== -->
+        
+        <!-- Welcome Banner -->
+        <div class="bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-700 text-white p-6 sm:p-8 rounded-3xl shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div class="space-y-2">
+                <div class="inline-flex items-center space-x-2 bg-white/10 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm border border-white/20">
+                    <i class="fa-solid fa-user-graduate text-amber-300"></i>
+                    <span>Student Portal</span>
+                    <span>&bull; {{ profile.roll_or_emp_id }}</span>
                 </div>
-                <p class="text-xs text-slate-500 mt-1">
-                    Department/Unit: <span class="font-medium text-slate-700">{{ profile.department|default:'Campus Wide' }}</span> &bull; 
-                    ID: <span class="font-mono text-slate-700">{{ profile.roll_or_emp_id|default:'N/A' }}</span>
+                <h1 class="text-2xl sm:text-3xl font-black tracking-tight">Namaste, {{ user.get_full_name|default:user.username }}!</h1>
+                <p class="text-xs sm:text-sm text-indigo-100 font-medium max-w-xl">
+                    {{ profile.department }} &bull; Track your campus event participation, verify attendance with anti-proxy selfie check-in, and provide mandatory event feedback.
                 </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <a href="{% url 'student_events' %}" class="px-4 py-2.5 bg-white text-slate-900 hover:bg-slate-100 font-bold text-xs rounded-xl shadow-md transition flex items-center">
+                    <i class="fa-solid fa-compass mr-1.5 text-brand-600"></i>Explore Campus Events
+                </a>
+                <a href="{% url 'checkin' %}" class="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center">
+                    <i class="fa-solid fa-qrcode mr-1.5"></i>Live QR Check-In
+                </a>
             </div>
         </div>
 
-        <div class="flex items-center space-x-3 w-full md:w-auto">
-            {% if role != 'STUDENT' %}
+        <!-- Student Attendance Stats -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-ticket"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-black text-slate-900">{{ registrations|length }}</div>
+                    <div class="text-xs font-medium text-slate-500">Registered Events</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-camera"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-black text-amber-700">{{ checked_in_count }}</div>
+                    <div class="text-xs font-medium text-slate-500">Pending Feedback Form</div>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-certificate"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-black text-emerald-700">{{ verified_count }}</div>
+                    <div class="text-xs font-medium text-slate-500">Officially Verified Attendance</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- My Registrations List -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">My Registered Events</h2>
+                    <p class="text-xs text-slate-500">Complete selfie verification & feedback to finalize attendance record</p>
+                </div>
+                <a href="{% url 'student_events' %}" class="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                    Find More Events &rarr;
+                </a>
+            </div>
+
+            {% if registrations %}
+                <div class="divide-y divide-slate-100">
+                    {% for reg in registrations %}
+                        <div class="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50/60 transition">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-brand-700 border border-indigo-100">
+                                        {{ reg.get_role_display }}
+                                    </span>
+                                    <span class="text-[11px] text-slate-400">
+                                        {{ reg.event.organizing_unit.name }}
+                                    </span>
+                                </div>
+                                <h3 class="text-sm font-extrabold text-slate-900">{{ reg.event.title }}</h3>
+                                <div class="text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                    <div><i class="fa-solid fa-location-dot text-slate-400 mr-1.5"></i>{{ reg.event.venue }}</div>
+                                    <div><i class="fa-solid fa-calendar text-slate-400 mr-1.5"></i>{{ reg.event.start_date|date:"D, M d, Y - h:i A" }}</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                {% if reg.status == 'VERIFIED' %}
+                                    <span class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        <i class="fa-solid fa-circle-check mr-1.5"></i>Attendance Verified
+                                    </span>
+                                {% elif reg.status == 'CHECKED_IN' %}
+                                    <a href="{% url 'event_feedback' reg.id %}" class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center">
+                                        <i class="fa-solid fa-star mr-1.5"></i>Submit Feedback to Verify
+                                    </a>
+                                {% else %}
+                                    <a href="{% url 'checkin' %}?token={{ reg.event.qr_checkin_token }}" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center">
+                                        <i class="fa-solid fa-camera mr-1.5"></i>Scan QR & Selfie Check-in
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="p-12 text-center">
+                    <i class="fa-solid fa-ticket text-slate-300 text-3xl mb-2"></i>
+                    <h3 class="text-sm font-bold text-slate-800">No events registered yet</h3>
+                    <p class="text-xs text-slate-500 mt-1 mb-4">Browse campus events and register to participate.</p>
+                    <a href="{% url 'student_events' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-xs font-semibold rounded-xl">
+                        Browse Events
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+
+    {% else %}
+        <!-- ================================================== -->
+        <!-- FACULTY, APPROVER & EXECUTIVE DASHBOARD            -->
+        <!-- ================================================== -->
+
+        <!-- Welcome & Designation Banner -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-center space-x-4">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-md shadow-brand-500/20">
+                    <i class="fa-solid fa-user-shield"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-2xl font-extrabold text-slate-900">{{ user.get_full_name|default:user.username }}</h1>
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider 
+                            {% if role == 'DIRECTOR' %}bg-rose-100 text-rose-800 border border-rose-300
+                            {% elif role == 'DEAN_ACCOUNTS' or role == 'DEAN_ACADEMICS' %}bg-purple-100 text-purple-800 border border-purple-200
+                            {% elif role == 'DEAN_RESEARCH' or role == 'DEAN_STUDENT_WELFARE' %}bg-blue-100 text-blue-800 border border-blue-200
+                            {% elif role == 'HOD' or role == 'REGISTRAR' %}bg-amber-100 text-amber-800 border border-amber-200
+                            {% else %}bg-emerald-100 text-emerald-800 border border-emerald-200{% endif %}">
+                            {{ profile.get_role_display|default:role }}
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">
+                        Department / Office: <span class="font-medium text-slate-700">{{ profile.department|default:'Institutional Office' }}</span> &bull; 
+                        Emp ID: <span class="font-mono text-slate-700">{{ profile.roll_or_emp_id|default:'N/A' }}</span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3 w-full md:w-auto">
                 <a href="{% url 'create_proposal' %}" class="flex-1 md:flex-initial inline-flex items-center justify-center px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl shadow-sm shadow-brand-500/25 transition">
                     <i class="fa-solid fa-plus-circle mr-2"></i>New Event Proposal
                 </a>
-            {% endif %}
-            <a href="{% url 'student_events' %}" class="flex-1 md:flex-initial inline-flex items-center justify-center px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold rounded-xl transition">
-                <i class="fa-solid fa-calendar-days mr-2 text-slate-500"></i>Published Events
-            </a>
-        </div>
-    </div>
-
-    <!-- Quick Metrics KPI Row -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
-                <i class="fa-solid fa-file-signature"></i>
-            </div>
-            <div>
-                <div class="text-2xl font-black text-slate-900">{{ stats.total_proposals }}</div>
-                <div class="text-xs font-medium text-slate-500">Total Proposals Filed</div>
+                <a href="{% url 'student_events' %}" class="flex-1 md:flex-initial inline-flex items-center justify-center px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold rounded-xl transition">
+                    <i class="fa-solid fa-calendar-days mr-2 text-slate-500"></i>Published Events
+                </a>
             </div>
         </div>
 
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
-                <i class="fa-solid fa-circle-check"></i>
-            </div>
-            <div>
-                <div class="text-2xl font-black text-emerald-700">{{ stats.approved_count }}</div>
-                <div class="text-xs font-medium text-slate-500">Approved & Live</div>
-            </div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold">
-                <i class="fa-solid fa-arrows-rotate"></i>
-            </div>
-            <div>
-                <div class="text-2xl font-black text-amber-700">{{ stats.revision_count }}</div>
-                <div class="text-xs font-medium text-slate-500">Revisions Requested</div>
-            </div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl font-bold">
-                <i class="fa-solid fa-users"></i>
-            </div>
-            <div>
-                <div class="text-2xl font-black text-purple-700">{{ stats.total_students }}</div>
-                <div class="text-xs font-medium text-slate-500">Registered Students</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Approver Queue Section (If User is an Approver) -->
-    {% if pending_approvals %}
-        <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-6 shadow-sm">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center space-x-2">
-                    <span class="w-3 h-3 rounded-full bg-amber-500 animate-ping"></span>
-                    <h2 class="text-lg font-bold text-slate-900">Pending Review Queue ({{ pending_approvals|length }})</h2>
+        <!-- KPI Metrics Row (Indian Rupee Currency ₹) -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-file-signature"></i>
                 </div>
-                <span class="text-xs font-semibold text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">
-                    Your Action Required
-                </span>
+                <div>
+                    <div class="text-2xl font-black text-slate-900">{{ stats.total_proposals }}</div>
+                    <div class="text-xs font-medium text-slate-500">Total Proposals Filed</div>
+                </div>
             </div>
-            <p class="text-xs text-slate-600 mb-4">
-                As <span class="font-bold text-slate-800">{{ profile.get_role_display }}</span>, the following proposals require your approval, revision remarks, or budget sanction.
-            </p>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {% for proposal in pending_approvals %}
-                    <div class="bg-white p-5 rounded-xl border border-amber-200 shadow-sm hover:shadow-md transition">
-                        <div class="flex items-start justify-between gap-2 mb-2">
-                            <h3 class="font-bold text-slate-900 text-sm leading-snug">{{ proposal.title }}</h3>
-                            {% if proposal.is_revision %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
-                                    Revision Cycle {{ proposal.revision_count }}
-                                </span>
-                            {% endif %}
-                        </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-black text-emerald-700">{{ stats.approved_count }}</div>
+                    <div class="text-xs font-medium text-slate-500">Cleared & Published</div>
+                </div>
+            </div>
 
-                        <div class="text-xs text-slate-500 space-y-1 mb-4">
-                            <div><i class="fa-solid fa-building text-slate-400 mr-1.5"></i>{{ proposal.organizing_unit.name }}</div>
-                            <div><i class="fa-solid fa-user text-slate-400 mr-1.5"></i>Proposer: <span class="font-medium text-slate-700">{{ proposal.proposer.get_full_name|default:proposal.proposer.username }}</span></div>
-                            <div><i class="fa-solid fa-wallet text-slate-400 mr-1.5"></i>Budget: <span class="font-semibold text-slate-900">${{ proposal.requested_budget }}</span></div>
-                            <div><i class="fa-solid fa-calendar text-slate-400 mr-1.5"></i>{{ proposal.start_date|date:"M d, Y H:i" }}</div>
-                        </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-black text-amber-700">{{ stats.revision_count }}</div>
+                    <div class="text-xs font-medium text-slate-500">Revisions Pending</div>
+                </div>
+            </div>
 
-                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
-                            <span class="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded">
-                                {{ proposal.get_status_display }}
-                            </span>
-                            <a href="{% url 'proposal_detail' proposal.id %}" class="inline-flex items-center px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-sm transition">
-                                Review & Take Action <i class="fa-solid fa-arrow-right ml-1.5 text-[10px]"></i>
-                            </a>
-                        </div>
-                    </div>
-                {% endfor %}
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+                <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-indian-rupee-sign"></i>
+                </div>
+                <div>
+                    <div class="text-xl font-black text-purple-700 font-mono">₹{{ stats.total_budget_sanctioned|floatformat:0 }}</div>
+                    <div class="text-xs font-medium text-slate-500">Sanctioned Budget</div>
+                </div>
             </div>
         </div>
-    {% endif %}
 
-    <!-- Faculty / Proposer Section: My Proposals -->
-    {% if role != 'STUDENT' %}
+        <!-- Approver Review Queue (If proposals are waiting for this logged-in entity) -->
+        {% if pending_approvals %}
+            <div class="bg-amber-50/70 border-2 border-amber-300 rounded-2xl p-6 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-3 h-3 rounded-full bg-amber-500 animate-ping"></span>
+                        <h2 class="text-lg font-bold text-slate-900">Pending Review Queue ({{ pending_approvals|length }})</h2>
+                    </div>
+                    <span class="text-xs font-semibold text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">
+                        Your Action Required
+                    </span>
+                </div>
+                <p class="text-xs text-slate-600 mb-4">
+                    As <span class="font-bold text-slate-800">{{ profile.get_role_display }}</span>, you are the designated reviewer for the proposals below.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% for proposal in pending_approvals %}
+                        <div class="bg-white p-5 rounded-xl border border-amber-200 shadow-sm hover:shadow-md transition">
+                            <div class="flex items-start justify-between gap-2 mb-2">
+                                <h3 class="font-bold text-slate-900 text-sm leading-snug">{{ proposal.title }}</h3>
+                                {% if proposal.is_revision %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+                                        Revision Cycle {{ proposal.revision_count }}
+                                    </span>
+                                {% endif %}
+                            </div>
+
+                            <div class="text-xs text-slate-500 space-y-1 mb-4">
+                                <div><i class="fa-solid fa-diagram-project text-slate-400 mr-1.5"></i>Chain: <span class="font-semibold text-brand-700">{{ proposal.get_chain_type_display|slice:":35" }}...</span></div>
+                                <div><i class="fa-solid fa-building text-slate-400 mr-1.5"></i>{{ proposal.organizing_unit.name }}</div>
+                                <div><i class="fa-solid fa-user text-slate-400 mr-1.5"></i>Proposer: <span class="font-medium text-slate-700">{{ proposal.proposer.get_full_name|default:proposal.proposer.username }}</span></div>
+                                <div><i class="fa-solid fa-indian-rupee-sign text-slate-400 mr-1.5"></i>Budget: <span class="font-semibold text-slate-900 font-mono">₹{{ proposal.approved_budget|floatformat:2 }}</span></div>
+                                <div><i class="fa-solid fa-calendar text-slate-400 mr-1.5"></i>{{ proposal.start_date|date:"M d, Y H:i" }}</div>
+                            </div>
+
+                            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                                <span class="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-1 rounded">
+                                    Stage {{ proposal.stage_number }} of {{ proposal.total_stages }}: {{ proposal.current_stage_title|slice:":25" }}...
+                                </span>
+                                <a href="{% url 'proposal_detail' proposal.id %}" class="inline-flex items-center px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg shadow-sm transition">
+                                    Review & Act <i class="fa-solid fa-arrow-right ml-1.5 text-[10px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Faculty / Organizer Section: My Event Proposals -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h2 class="text-lg font-bold text-slate-900">My Event Proposals</h2>
-                    <p class="text-xs text-slate-500">Track multi-stage approval statuses, revision comments, and post-event compliance</p>
+                    <h2 class="text-lg font-bold text-slate-900">Event Proposals Management</h2>
+                    <p class="text-xs text-slate-500">Track multi-stage approvals, revision feedback, and compliance closure</p>
                 </div>
                 <a href="{% url 'create_proposal' %}" class="inline-flex items-center text-xs font-semibold text-brand-600 hover:text-brand-700">
                     <i class="fa-solid fa-plus mr-1"></i>Create New Proposal
@@ -153,9 +280,10 @@
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
                                 <th class="py-3.5 px-4">Event Title & Unit</th>
-                                <th class="py-3.5 px-4">Requested Budget</th>
+                                <th class="py-3.5 px-4">Chain Type</th>
+                                <th class="py-3.5 px-4">Sanctioned Budget</th>
                                 <th class="py-3.5 px-4">Approval Stage</th>
-                                <th class="py-3.5 px-4">Revision Status</th>
+                                <th class="py-3.5 px-4">Revision Cycle</th>
                                 <th class="py-3.5 px-4 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -169,9 +297,14 @@
                                         <span class="text-[11px] text-slate-400">{{ proposal.organizing_unit.name }} &bull; {{ proposal.venue }}</span>
                                     </td>
                                     <td class="py-4 px-4">
-                                        <div class="font-bold text-slate-900">${{ proposal.approved_budget }}</div>
+                                        <span class="text-[11px] font-semibold text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-100">
+                                            {{ proposal.get_chain_type_display|slice:":22" }}
+                                        </span>
+                                    </td>
+                                    <td class="py-4 px-4 font-mono">
+                                        <div class="font-bold text-slate-900">₹{{ proposal.approved_budget|floatformat:2 }}</div>
                                         {% if proposal.approved_budget != proposal.requested_budget %}
-                                            <span class="text-[10px] text-amber-600 font-medium">(Orig: ${{ proposal.requested_budget }})</span>
+                                            <span class="text-[10px] text-amber-600 font-medium">(Req: ₹{{ proposal.requested_budget|floatformat:0 }})</span>
                                         {% endif %}
                                     </td>
                                     <td class="py-4 px-4">
@@ -192,8 +325,8 @@
                                             <span class="text-slate-400 text-[11px]">First Submission</span>
                                         {% endif %}
                                     </td>
-                                    <td class="py-4 px-4 text-right space-x-1">
-                                        <a href="{% url 'proposal_detail' proposal.id %}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition" title="View Proposal Detail">
+                                    <td class="py-4 px-4 text-right space-x-1 whitespace-nowrap">
+                                        <a href="{% url 'proposal_detail' proposal.id %}" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition">
                                             Details
                                         </a>
 
@@ -204,8 +337,8 @@
                                         {% endif %}
 
                                         {% if proposal.status == 'APPROVED' or proposal.status == 'COMPLETED' %}
-                                            <a href="{% url 'live_event' proposal.id %}" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition" title="Project QR Code for Live Attendance">
-                                                <i class="fa-solid fa-qrcode mr-1"></i>Live QR
+                                            <a href="{% url 'live_event' proposal.id %}" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition">
+                                                <i class="fa-solid fa-qrcode mr-1"></i>Project QR
                                             </a>
                                             <a href="{% url 'compliance_report' proposal.id %}" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition">
                                                 <i class="fa-solid fa-chart-pie mr-1"></i>Report
@@ -219,11 +352,9 @@
                 </div>
             {% else %}
                 <div class="p-12 text-center">
-                    <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-lg">
-                        <i class="fa-solid fa-folder-open"></i>
-                    </div>
-                    <h3 class="text-sm font-bold text-slate-800">No proposals created yet</h3>
-                    <p class="text-xs text-slate-500 mt-1 mb-4">Draft and file your first event proposal for automated multi-stage routing.</p>
+                    <i class="fa-solid fa-folder-open text-slate-300 text-3xl mb-2"></i>
+                    <h3 class="text-sm font-bold text-slate-800">No proposals drafted yet</h3>
+                    <p class="text-xs text-slate-500 mt-1 mb-4">Submit your first college event proposal to start the approval pipeline.</p>
                     <a href="{% url 'create_proposal' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-xs font-semibold rounded-xl">
                         <i class="fa-solid fa-plus-circle mr-1.5"></i>Create Proposal
                     </a>

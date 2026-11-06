@@ -1,84 +1,94 @@
-# College Event Management System (CEMS)
+# College Event Management System (CEMS India)
 
-A Django-based web platform designed to streamline, track, and automate college event approvals and verified student attendance.
-
----
-
-## 🚀 Key Features
-
-1. **5-Stage Dynamic Approval Pipeline**:
-   - **Stage 1 (Unit Head)**: Dynamically resolves to Department Head (HOD) for academic proposals or Club President for society events.
-   - **Stage 2 (HR Review)**: Scheduling, leave, and staffing oversight.
-   - **Stage 3 (Dean of Research)**: Keynote speaker vetting and intellectual/academic merit review.
-   - **Stage 4 (Dean of Accounts)**: Budget scrutiny with the unique ability to **revise allocations with written reasoning**.
-   - **Stage 5 (Dean of Academics / Director)**: Executive approval triggering automated operational logistics emails.
-
-2. **Revision Cycle Tracking**:
-   - When any approver requests revisions or rejects, written remarks are mandatory.
-   - Proposers can edit and resubmit; the proposal re-routes through the full chain with a clear **`Revision Cycle N`** badge and previous remark history.
-
-3. **Automated Campus Logistics Hook**:
-   - Stage 5 clearance automatically records and emails notifications to **Mess / Catering**, **Transport / Fleet**, and **Auditorium / AV Maintenance** teams with exact timestamps and requirements.
-
-4. **Anti-Proxy Live Check-In (QR Code + Front Selfie)**:
-   - Event coordinators launch a large, high-contrast QR display for projector screens.
-   - Students scan the QR code and must capture a live front-camera selfie (`navigator.mediaDevices.getUserMedia`) to eliminate proxy check-ins.
-
-5. **Guaranteed Feedback Loop**:
-   - Attendance status remains `CHECKED_IN` until the student completes a structured 3-factor feedback survey.
-   - Upon survey submission, attendance flips to **`VERIFIED`**, ensuring high institutional survey participation rates.
-
-6. **Post-Event Compliance & Audit Report**:
-   - Aggregates budgeted vs. actual allocation, turnout metrics, and average ratings with qualitative feedback for easy printing or PDF export.
+A comprehensive Django-based web application tailored for Indian engineering colleges and universities to digitize event proposals, streamline multi-stage approvals, and guarantee authentic, anti-proxy student attendance.
 
 ---
 
-## 🛠️ Tech Stack
+## 🇮🇳 Indian College Institutional Framework
 
-- **Backend**: Python 3.12, Django 6.1
-- **Database**: SQLite
-- **Frontend**: HTML5, Tailwind CSS, Vanilla JavaScript
-- **Hardware/APIs**: HTML5 Camera API (`MediaDevices.getUserMedia`), QR generation via `qrcode` + `Pillow`
-- **Cost**: 100% Free & Open Source
+### 1. 3 Configurable Approval Chains + Custom Chain Option
+Every proposal passes through a strictly verified approval pipeline. While preliminary approvers differ based on event type, the **Dean of Finance & Accounts**, **Dean of Academic Affairs**, and **Director of the Institute** are **strictly mandatory in all pipelines**:
+
+1. **Option A: Academic & Research Event Chain**
+   - *Best for*: National/International Conferences, Seminars, Workshops, Faculty Development Programs (FDPs).
+   - *Flow*: `Head of Department (HOD)` &rarr; `Dean (R&D)` &rarr; `Dean (Finance & Accounts)*` &rarr; `Dean (Academic Affairs)*` &rarr; `Director (Final Clearance)*`
+
+2. **Option B: Student Club, Cultural & Sports Fest Chain**
+   - *Best for*: Technical Fests (Hackathons), Cultural Celebrations, Society Contests, Inter-College Derbies.
+   - *Flow*: `Faculty Advisor / Club In-Charge` &rarr; `Dean of Student Welfare (DSW)` &rarr; `Dean (Finance & Accounts)*` &rarr; `Dean (Academic Affairs)*` &rarr; `Director (Final Clearance)*`
+
+3. **Option C: Institute-Wide Mega Event & Conclave Chain**
+   - *Best for*: Annual Convocation, Foundation Day, Industry-Academia Conclaves.
+   - *Flow*: `Registrar (HR & Admin)` &rarr; `Dean (Research & Planning)` &rarr; `Dean (Finance & Accounts)*` &rarr; `Dean (Academic Affairs)*` &rarr; `Director (Final Clearance)*`
+
+4. **Option D: Custom Approval Chain Builder**
+   - Organizers can select any combination of preliminary approvers (HOD, Club In-charge, Registrar, Dean R&D, Dean Student Welfare).
+   - **Statutory Gate**: `Dean (Finance)` &rarr; `Dean (Academics)` &rarr; `Director` are permanently locked into the chain as the final stages to guarantee institute compliance.
 
 ---
 
-## ⚡ Quickstart Guide
+### 2. Role-Scoped Portals & Default Dashboard Routing
+- **Clean Dashboard Default**: Switching roles via the top identity bar immediately routes the user directly to their entity dashboard (`/`).
+- **Student Dashboard**: Shows registered campus events, verification certificates, pending check-ins, and upcoming fests. Students are strictly prohibited from proposing or publishing events.
+- **Approver Dashboard**: Features a prominent **Pending Review Queue** highlighting proposals awaiting their specific review stage.
 
-### 1. Run the Development Server
+---
+
+### 3. Financial Scrutiny in Indian Rupees (₹ INR)
+- Proposals capture requested budget in Indian Rupees (`₹`).
+- **Dean of Finance & Accounts** has special statutory authority during their stage to revise and sanction the budget amount with a recorded justification.
+
+---
+
+### 4. Anti-Proxy Attendance & Guaranteed Feedback Gate
+- **Dynamic Projected QR**: Faculty beam the event QR code onto the auditorium projector screen.
+- **Front-Camera Selfie**: Students scan with their phone and must take a live front-camera selfie using the HTML5 `MediaDevices.getUserMedia()` API to eliminate proxy sign-ins.
+- **Feedback Gatekeeper**: Attendance is held at `CHECKED_IN` until the student submits a 3-category 5-star feedback survey, upon which it flips to **`VERIFIED`** (ensuring 100% feedback collection).
+
+---
+
+### 5. Automated Operational Logistics Dispatch
+Upon the Director's final clearance, the system automatically emails formal work orders to:
+- **Hostel Mess & Catering**: `catering.mess@college.ac.in`
+- **Transport & Vehicle Fleet**: `estate.transport@college.ac.in`
+- **Auditorium, Estate, AV & Genset**: `maintenance.av@college.ac.in`
+
+---
+
+## 👥 Authentic Indian Personas (Password: `password123`)
+
+| Persona | Username | Role / Department | Responsibilities |
+| :--- | :--- | :--- | :--- |
+| **Prof. Rajesh Sharma** | `faculty` | Faculty Coordinator (CSE Dept) | Drafts proposals, selects approval chains, projects live QR |
+| **Dr. K. V. Ramanathan** | `hod_cse` | Head of Department (HOD CSE) | Stage 1 Approver for Academic proposals |
+| **Prof. Priya Nair** | `club_lead` | Faculty Advisor (Robotics Society) | Stage 1 Approver for Club / Technical fest events |
+| **Smt. Sunita Deshmukh** | `registrar` | Registrar (Admin & Establishment) | Stage 1 Approver for Institute-wide mega events |
+| **Dr. P. Venkatraman** | `dean_research` | Dean of Research & Consultancy (R&D) | Keynote speaker vetting & academic review |
+| **Dr. Alok Sen** | `dean_dsw` | Dean of Student Welfare (DSW) | Student affairs & festival safety clearance |
+| **Dr. Suresh Chandra** | `dean_finance` | Dean of Finance & Accounts (Mandatory) | Budget sanction & revision in Indian Rupees (₹) |
+| **Dr. Meenakshi Sundaram** | `dean_academics` | Dean of Academic Affairs (Mandatory) | Academic calendar alignment & duty leave clearance |
+| **Dr. R. Chidambaram** | `director` | Director of the Institute (Mandatory) | Executive clearance & automated logistics trigger |
+| **Aarav Patel** | `student1` | Student (21BCSE101) | Event registration, selfie check-in, feedback submission |
+| **Ananya Sen** | `student2` | Student (21BECE034) | Verified student attendee |
+
+---
+
+## ⚡ Quickstart
+
+### 1. Launch the Server
 ```powershell
 cd C:\Users\abhis\.gemini\antigravity\scratch\college_event_system
 python manage.py runserver
 ```
 Visit **`http://127.0.0.1:8000/`** in your browser.
 
-### 2. Reset or Re-seed Demo Data at Any Time
+### 2. Re-seed Demo Data (At Any Time)
 ```powershell
 python manage.py seed_data
 ```
 
----
-
-## 👥 Demo Accounts & Personas (Password: `password123`)
-
-The application includes an **instant identity switcher bar** at the top of every page, or you can log in manually with:
-
-| Persona | Username | Role / Department | Responsibility |
-|:---|:---|:---|:---|
-| **Prof. Alan Turing** | `faculty` | Faculty / Computer Science | Files proposals, launches live QR screen, views compliance |
-| **Dr. Grace Hopper** | `hod_cs` | HOD / Computer Science | Stage 1 Approver for CS Department proposals |
-| **Alex Johnson** | `club_head` | Club President / Robotics | Stage 1 Approver for Club proposals |
-| **Sarah Jenkins** | `hr_admin` | Human Resources (HR) | Stage 2 Approver (Timetable & staff duty leave) |
-| **Dr. Richard Feynman** | `dean_research` | Dean of Research | Stage 3 Approver (Speaker vetting & academic merit) |
-| **Dr. Milton Friedman** | `dean_accounts` | Dean of Accounts | Stage 4 Approver (Budget adjustments & reasons) |
-| **Dr. APJ Kalam** | `dean_academics` | Dean of Academics / Director | Stage 5 Final Clearance (Triggers logistics emails) |
-| **John Doe** | `student1` | Student (CS21B001) | Registers for events, performs selfie check-in & feedback |
-| **Jane Smith** | `student2` | Student (ME21B015) | Registered student volunteer |
-
----
-
-## 🧪 Running Automated Tests
+### 3. Run Automated Test Suite
 ```powershell
 python manage.py test
 ```
-Verifies the complete 5-stage pipeline, budget revision handling, logistics notification dispatch, revision cycle counters, and the feedback verification gate.
+*(All 3 lifecycle test suites pass: academic chain, custom chain builder, and student permission block).*
