@@ -229,13 +229,15 @@ class Command(BaseCommand):
             role='PARTICIPANT',
             status='REGISTERED'
         )
+        from django.core.files.base import ContentFile
+        svg_content = b'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#059669"/><text x="50" y="55" font-size="11" fill="white" text-anchor="middle">Selfie OK</text></svg>'
         reg2 = EventRegistration.objects.create(
             event=event_published,
             student=created_users['student2'],
             role='VOLUNTEER',
             status='VERIFIED',
             checked_in_at=now - timedelta(hours=1),
-            selfie_image='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23059669"/><text x="50" y="55" font-size="11" fill="white" text-anchor="middle">Selfie OK</text></svg>'
+            selfie_image=ContentFile(svg_content, name='seed_selfie_student2.svg')
         )
         EventFeedback.objects.create(
             registration=reg2,

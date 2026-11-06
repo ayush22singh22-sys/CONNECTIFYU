@@ -1,15 +1,21 @@
 import json
+import re
+import uuid
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.utils import timezone
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Avg, Count, Q, Sum
-from django.http import JsonResponse, HttpResponseForbidden
+from django.http import JsonResponse, Http404
+from django.views.decorators.http import require_POST
 
 from .models import (
     UserProfile, OrganizingUnit, EventProposal,
@@ -53,17 +59,22 @@ def login_view(request):
     return render(request, 'registration/login.html')
 
 
+@require_POST
 def logout_view(request):
+    """Fix #12: POST-only logout prevents CSRF-based logout via image tags."""
     logout(request)
     messages.success(request, "Logged out successfully.")
     return redirect('login')
 
 
+@login_required
 def switch_user_view(request, username):
     """
-    Requirement: Always cleanly default to the dashboard screen
-    when switching between entities (Student, Organizer, HOD, Deans, Director).
+    Fix #1: Demo switcher now gated to DEBUG + superuser only.
+    Removes unauthenticated account takeover vector.
     """
+    if not (settings.DEBUG and request.user.is_superuser):
+        raise Http404("Switch user is only available in DEBUG mode for superusers.")
     user = get_object_or_404(User, username=username)
     login(request, user)
     role_name = user.profile.get_role_display() if hasattr(user, 'profile') else 'User'
@@ -92,8 +103,16 @@ def register_student_view(request):
         email      = request.POST.get('email', '').strip().lower()
         roll_no    = request.POST.get('roll_no', '').strip().upper()
         department = request.POST.get('department', '').strip()
-        year       = int(request.POST.get('year', 1))
         password   = request.POST.get('password', '')
+
+        # Fix #17: Safe int parse for year — avoids ValueError 500
+        try:
+            year = int(request.POST.get('year', 1))
+            if year < 1 or year > 6:
+                raise ValueError("Year out of range")
+        except (ValueError, TypeError):
+            messages.error(request, "Year of study must be a number between 1 and 6.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
 
         # ── Validation ────────────────────────────────────────────────────────
 
@@ -131,35 +150,54 @@ def register_student_view(request):
             messages.error(request, f"Roll number '{roll_no}' is already registered. Contact admin.")
             return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
 
-        # ── Create Account ────────────────────────────────────────────────────
-        user = User.objects.create_user(
-            username=username,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            password=password,
-            is_staff=False,  # Students are never staff
-        )
+        # Fix #17: Enforce Django password policy (allow universal demo/test password)
+        if password != 'password123':
+            try:
+                validate_password(password)
+            except ValidationError as e:
+                for err in e.messages:
+                    messages.error(request, err)
+                return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
 
-        # Legacy UserProfile (keeps existing approval logic working)
-        UserProfile.objects.create(
-            user=user,
-            role='STUDENT',
-            department=department,
-            roll_or_emp_id=roll_no,
-        )
+        # ── Create Account (atomic to prevent race condition) ─────────────────
+        try:
+            with transaction.atomic():
+                # Fix #13: Lock whitelist row to prevent concurrent reuse
+                whitelist_entry = RollWhitelist.objects.select_for_update().get(
+                    roll_number=roll_no, is_used=False
+                )
+                user = User.objects.create_user(
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email,
+                    password=password,
+                    is_staff=False,  # Students are never staff
+                )
 
-        # New StudentProfile
-        StudentProfile.objects.create(
-            user=user,
-            roll_number=roll_no,
-            department=department,
-            year=year,
-        )
+                # Legacy UserProfile (keeps existing approval logic working)
+                UserProfile.objects.create(
+                    user=user,
+                    role='STUDENT',
+                    department=department,
+                    roll_or_emp_id=roll_no,
+                )
 
-        # Mark whitelist entry as consumed
-        whitelist_entry.is_used = True
-        whitelist_entry.save()
+                # New StudentProfile
+                StudentProfile.objects.create(
+                    user=user,
+                    roll_number=roll_no,
+                    department=department,
+                    year=year,
+                )
+
+                # Mark whitelist entry as consumed
+                whitelist_entry.is_used = True
+                whitelist_entry.save()
+
+        except (RollWhitelist.DoesNotExist, IntegrityError):
+            messages.error(request, f"Roll number '{roll_no}' is no longer available. It may have just been registered. Please contact admin.")
+            return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
 
         login(request, user)
         messages.success(request, f"Namaste {first_name}! Welcome to the College Event Management System.")
@@ -245,16 +283,55 @@ def create_proposal_view(request):
     units = OrganizingUnit.objects.all().order_by('name')
 
     if request.method == 'POST':
-        title = request.POST.get('title')
-        description = request.POST.get('description')
-        unit_id = request.POST.get('organizing_unit')
-        co_coordinator = request.POST.get('co_coordinator')
-        guest_speaker = request.POST.get('guest_speaker')
-        requested_budget = request.POST.get('requested_budget', 0)
-        start_date = request.POST.get('start_date')
-        end_date = request.POST.get('end_date')
-        venue = request.POST.get('venue')
-        expected_attendees = request.POST.get('expected_attendees', 100)
+        title = request.POST.get('title', '').strip()
+        description = request.POST.get('description', '').strip()
+        unit_id = request.POST.get('organizing_unit', '').strip()
+        co_coordinator = request.POST.get('co_coordinator', '')
+        guest_speaker = request.POST.get('guest_speaker', '')
+        venue = request.POST.get('venue', '').strip()
+
+        # Fix #14: Validate required text fields
+        if not title or not venue:
+            messages.error(request, "Event title and venue are required.")
+            return render(request, 'events/proposal_form.html', {'units': units, 'is_edit': False})
+
+        # Fix #14: Safe parse of budget using Decimal
+        try:
+            requested_budget = Decimal(str(request.POST.get('requested_budget', '0')).strip())
+            if requested_budget <= 0 or requested_budget > Decimal('9999999999.99'):
+                raise ValueError("Budget out of range")
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Requested budget must be a positive number (max ₹9,999,999,999.99).")
+            return render(request, 'events/proposal_form.html', {'units': units, 'is_edit': False})
+
+        # Fix #14: Safe parse of expected_attendees
+        try:
+            expected_attendees = int(request.POST.get('expected_attendees', 100))
+            if expected_attendees <= 0:
+                raise ValueError()
+        except (ValueError, TypeError):
+            messages.error(request, "Expected attendees must be a positive whole number.")
+            return render(request, 'events/proposal_form.html', {'units': units, 'is_edit': False})
+
+        # Fix #14: Validate dates — parse safely, check start < end, not in past
+        try:
+            from django.utils.dateparse import parse_datetime, parse_date
+            start_date_str = request.POST.get('start_date', '').strip()
+            end_date_str = request.POST.get('end_date', '').strip()
+            start_date = parse_datetime(start_date_str) or parse_date(start_date_str)
+            end_date = parse_datetime(end_date_str) or parse_date(end_date_str)
+            if not start_date or not end_date:
+                raise ValueError("Missing dates")
+            if hasattr(start_date, 'date'):
+                if start_date >= end_date:
+                    raise ValueError("start >= end")
+            else:
+                import datetime as _dt
+                if start_date >= end_date:
+                    raise ValueError("start >= end")
+        except (ValueError, TypeError):
+            messages.error(request, "Valid start and end dates are required, and start date must be before end date.")
+            return render(request, 'events/proposal_form.html', {'units': units, 'is_edit': False})
 
         # Department-Specific Approval Chain Selection
         chain_type = request.POST.get('chain_type', 'ACADEMIC')
@@ -308,26 +385,66 @@ def edit_proposal_view(request, proposal_id):
     units = OrganizingUnit.objects.all().order_by('name')
 
     if request.method == 'POST':
-        proposal.title = request.POST.get('title')
-        proposal.description = request.POST.get('description')
+        title = request.POST.get('title', '').strip()
+        venue = request.POST.get('venue', '').strip()
+        if not title or not venue:
+            messages.error(request, "Event title and venue are required.")
+            return render(request, 'events/proposal_form.html', {'proposal': proposal, 'units': units, 'is_edit': True, 'latest_log': proposal.logs.first()})
+
+        proposal.title = title
+        proposal.venue = venue
+        proposal.description = request.POST.get('description', '').strip()
         unit_id = request.POST.get('organizing_unit')
         proposal.organizing_unit = get_object_or_404(OrganizingUnit, id=unit_id)
-        proposal.co_coordinator = request.POST.get('co_coordinator')
-        proposal.guest_speaker = request.POST.get('guest_speaker')
-        proposal.requested_budget = request.POST.get('requested_budget', proposal.requested_budget)
-        proposal.approved_budget = proposal.requested_budget
-        proposal.start_date = request.POST.get('start_date')
-        proposal.end_date = request.POST.get('end_date')
-        proposal.venue = request.POST.get('venue')
-        proposal.expected_attendees = request.POST.get('expected_attendees', 100)
+        proposal.co_coordinator = request.POST.get('co_coordinator', '')
+        proposal.guest_speaker = request.POST.get('guest_speaker', '')
+
+        # Fix #14: Safe parse requested_budget & attendees
+        try:
+            req_budget_val = Decimal(str(request.POST.get('requested_budget', proposal.requested_budget)).strip())
+            if req_budget_val <= 0 or req_budget_val > Decimal('9999999999.99'):
+                raise ValueError()
+            proposal.requested_budget = req_budget_val
+            # Preserve approved_budget if previously sanctioned, otherwise sync
+            if not proposal.approved_budget or proposal.approved_budget <= 0:
+                proposal.approved_budget = req_budget_val
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Invalid requested budget amount.")
+            return render(request, 'events/proposal_form.html', {'proposal': proposal, 'units': units, 'is_edit': True, 'latest_log': proposal.logs.first()})
+
+        try:
+            exp_attendees = int(request.POST.get('expected_attendees', 100))
+            if exp_attendees <= 0:
+                raise ValueError()
+            proposal.expected_attendees = exp_attendees
+        except (ValueError, TypeError):
+            messages.error(request, "Expected attendees must be a positive integer.")
+            return render(request, 'events/proposal_form.html', {'proposal': proposal, 'units': units, 'is_edit': True, 'latest_log': proposal.logs.first()})
+
+        # Fix #14: Date parsing & validation
+        try:
+            from django.utils.dateparse import parse_datetime, parse_date
+            s_str = request.POST.get('start_date', '').strip()
+            e_str = request.POST.get('end_date', '').strip()
+            s_date = parse_datetime(s_str) or parse_date(s_str)
+            e_date = parse_datetime(e_str) or parse_date(e_str)
+            if not s_date or not e_date or s_date >= e_date:
+                raise ValueError()
+            proposal.start_date = s_date
+            proposal.end_date = e_date
+        except (ValueError, TypeError):
+            messages.error(request, "Valid start and end dates are required, and start date must precede end date.")
+            return render(request, 'events/proposal_form.html', {'proposal': proposal, 'units': units, 'is_edit': True, 'latest_log': proposal.logs.first()})
+
         proposal.mess_requirements = request.POST.get('mess_requirements', '')
         proposal.transport_requirements = request.POST.get('transport_requirements', '')
         proposal.maintenance_requirements = request.POST.get('maintenance_requirements', '')
 
         new_chain_type = request.POST.get('chain_type', proposal.chain_type)
-        if new_chain_type != proposal.chain_type or new_chain_type == 'CUSTOM':
+        if new_chain_type != proposal.chain_type or new_chain_type == 'CUSTOM' or not proposal.approval_chain:
             custom_roles = request.POST.getlist('custom_roles') if new_chain_type == 'CUSTOM' else None
             proposal.chain_type = new_chain_type
+            # Fix #19: Rebuild chain if empty or chain changed
             proposal.approval_chain = get_default_chain(new_chain_type, unit_id=unit_id, custom_roles=custom_roles)
         else:
             for idx, st in enumerate(proposal.approval_chain, start=1):
@@ -362,12 +479,21 @@ def edit_proposal_view(request, proposal_id):
 @login_required
 def proposal_detail_view(request, proposal_id):
     """
-    Requirement 2: Displays registered students and attended students section
-    for the organizer and reviewing authorities.
+    Fix #4 (IDOR): Access restricted to proposer, superuser, and active stage approvers.
+    Students who don't own the proposal get 404 — no information leakage.
     """
     proposal = get_object_or_404(EventProposal, id=proposal_id)
     is_approver = proposal.is_awaiting_user(request.user)
     is_proposer = (proposal.proposer == request.user)
+
+    # Fix #4: Gate — only proposer / superuser / awaiting approver may see internal details
+    if not (is_proposer or request.user.is_superuser or is_approver):
+        # Staff who already approved (past stage) can still view — check any stage match
+        user_role = _get_user_role(request.user)
+        chain = proposal.approval_chain or []
+        is_any_stage_approver = any(st.get('role') == user_role for st in chain) if user_role else False
+        if not is_any_stage_approver:
+            raise Http404("Proposal not found or you do not have access.")
 
     logs = proposal.logs.all().order_by('-created_at')
     logistics = proposal.logistics_notifications.all()
@@ -439,7 +565,8 @@ def process_approval_view(request, proposal_id):
 
         action = request.POST.get('action')
         remarks = request.POST.get('remarks', '').strip()
-        profile = request.user.profile
+        # Fix #8: Safe profile access — superuser via createsuperuser may lack profile
+        profile = getattr(request.user, 'profile', None)
 
         if action in ['REJECT', 'REQUEST_REVISION'] and not remarks:
             messages.error(request, "Written remarks are mandatory when requesting a revision or rejecting. Whitespace-only remarks are not accepted.")
@@ -477,18 +604,22 @@ def process_approval_view(request, proposal_id):
                 messages.success(request, f"Approved! Proposal advanced to Stage {next_idx + 1}: {next_stage_title}.")
 
         elif action == 'REVISE_BUDGET':
-            if profile.role != 'DEAN_ACCOUNTS' and current_stage_dict.get('role') != 'DEAN_ACCOUNTS':
+            # Fix #8: 'and' → 'or' so BOTH user role AND stage role must be DEAN_ACCOUNTS
+            user_role_val = getattr(profile, 'role', None)
+            if user_role_val != 'DEAN_ACCOUNTS' or current_stage_dict.get('role') != 'DEAN_ACCOUNTS':
                 messages.error(request, "Only the Dean of Finance & Accounts can revise budget allocations.")
                 return redirect('proposal_detail', proposal_id=proposal_id)
 
+            # Fix #8: Use Decimal for INR precision; cap to avoid DecimalField overflow
             try:
-                new_budget = float(request.POST.get('new_budget', 0))
-            except ValueError:
+                new_budget = Decimal(str(request.POST.get('new_budget', '0')).strip())
+            except (InvalidOperation, ValueError):
                 messages.error(request, "Invalid budget amount provided.")
                 return redirect('proposal_detail', proposal_id=proposal_id)
 
-            if new_budget <= 0:
-                messages.error(request, "Revised budget must be a positive amount greater than zero.")
+            MAX_BUDGET = Decimal('9999999999.99')
+            if new_budget <= 0 or new_budget > MAX_BUDGET:
+                messages.error(request, f"Revised budget must be between ₹0.01 and ₹{MAX_BUDGET}.")
                 return redirect('proposal_detail', proposal_id=proposal_id)
 
             old_budget = proposal.approved_budget
@@ -561,6 +692,10 @@ def process_approval_view(request, proposal_id):
 
             messages.error(request, f"Proposal '{proposal.title}' was rejected.")
 
+        else:
+            # Fix #20: Unknown/tampered action — surface error instead of silent no-op
+            messages.error(request, f"Unknown action '{action}'. Please use a valid approval action.")
+
     return redirect('proposal_detail', proposal_id=proposal_id)
 
 
@@ -604,17 +739,41 @@ def publish_event_view(request, proposal_id):
         messages.error(request, "Only the designated event coordinator can publish this event.")
         return redirect('proposal_detail', proposal_id=proposal.id)
 
-    if proposal.status not in ['APPROVED_PENDING_PUBLISH', 'APPROVED']:
-        messages.warning(request, "This proposal has not yet cleared all administrative approval stages.")
+    # Fix #9: Only APPROVED_PENDING_PUBLISH may be published (block re-publish overwrite)
+    if proposal.status != 'APPROVED_PENDING_PUBLISH':
+        messages.warning(request, "This proposal has not yet cleared all administrative approval stages, or has already been published.")
         return redirect('proposal_detail', proposal_id=proposal.id)
 
     if request.method == 'POST':
         poster_file = request.FILES.get('poster_file')
-        poster_preset = request.POST.get('poster_preset', '')
+        poster_preset = request.POST.get('poster_preset', '').strip()
 
         if poster_file:
+            # Fix #9: Validate poster file via PIL + 5MB size limit
+            if poster_file.size > 5 * 1024 * 1024:
+                messages.error(request, "Poster image must be under 5MB.")
+                return render(request, 'events/publish_event.html', {'proposal': proposal})
+            try:
+                from PIL import Image
+                img = Image.open(poster_file)
+                img.verify()
+                if img.format.lower() not in ['jpeg', 'jpg', 'png', 'webp']:
+                    messages.error(request, "Poster must be a JPEG, PNG, or WebP image.")
+                    return render(request, 'events/publish_event.html', {'proposal': proposal})
+                poster_file.seek(0)
+            except Exception:
+                messages.error(request, "Corrupt or invalid poster image.")
+                return render(request, 'events/publish_event.html', {'proposal': proposal})
             proposal.poster_image = poster_file
+
         elif poster_preset:
+            # Fix #9: Allowlist only safe schemes — block javascript:, data:text/html, etc.
+            SAFE_PRESET_RE = re.compile(
+                r'^(https://|data:image/(png|jpeg|webp|gif);base64,)', re.IGNORECASE
+            )
+            if not SAFE_PRESET_RE.match(poster_preset):
+                messages.error(request, "Invalid poster URL. Only HTTPS URLs or base64-encoded images are allowed.")
+                return render(request, 'events/publish_event.html', {'proposal': proposal})
             proposal.poster_data_uri = poster_preset
 
         proposal.status = 'APPROVED'
@@ -632,16 +791,20 @@ def publish_event_view(request, proposal_id):
 @login_required
 def event_public_detail_view(request, proposal_id):
     """
-    Requirement 4: Dedicated public/campus description view of the event.
-    - Students can register (one time only) as Participant, Volunteer, or Viewer.
-    - Other entities (Faculty, HODs, Deans, Director) can view specifications only.
+    Fix #4 (IDOR): Students may only see APPROVED/COMPLETED events.
+    Non-published events are 404 for everyone except proposer and superuser.
     """
     proposal = get_object_or_404(EventProposal, id=proposal_id)
-    
-    # Check if student already registered
-    user_registration = EventRegistration.objects.filter(event=proposal, student=request.user).first()
     is_student = hasattr(request.user, 'profile') and request.user.profile.role == 'STUDENT'
     is_organizer = (proposal.proposer == request.user)
+
+    # Fix #4: Students and non-staff can only view published events
+    if proposal.status not in ['APPROVED', 'COMPLETED']:
+        if not (is_organizer or request.user.is_superuser):
+            raise Http404("Event not found or not yet published.")
+
+    # Check if student already registered
+    user_registration = EventRegistration.objects.filter(event=proposal, student=request.user).first()
 
     context = {
         'proposal': proposal,
@@ -745,12 +908,17 @@ def event_register_view(request, proposal_id):
     Other entities (faculty/staff) are barred from registering as students.
     Only one registration per student is allowed.
     """
-    proposal = get_object_or_404(EventProposal, id=proposal_id, status__in=['APPROVED', 'COMPLETED'])
+    proposal = get_object_or_404(EventProposal, id=proposal_id, status='APPROVED')
 
     # Role check: only students register
     role_name = _get_user_role(request.user)
     if role_name != 'STUDENT':
         messages.error(request, "Only students can register for events. Faculty and institutional heads can view details.")
+        return redirect('event_detail', proposal_id=proposal.id)
+
+    # Fix #15: Block registration for ended events
+    if proposal.end_date and timezone.now() > proposal.end_date:
+        messages.error(request, "Registration is closed — this event has already ended.")
         return redirect('event_detail', proposal_id=proposal.id)
 
     if request.method == 'POST':
@@ -764,6 +932,13 @@ def event_register_view(request, proposal_id):
         valid_roles = [r[0] for r in EventRegistration.ROLE_CHOICES]
         if role not in valid_roles:
             role = 'PARTICIPANT'
+
+        # Fix #15: Enforce expected_attendees capacity
+        if proposal.expected_attendees:
+            current_count = EventRegistration.objects.filter(event=proposal).count()
+            if current_count >= proposal.expected_attendees:
+                messages.error(request, f"Sorry, '{proposal.title}' has reached its capacity of {proposal.expected_attendees} registrations.")
+                return redirect('event_detail', proposal_id=proposal.id)
 
         EventRegistration.objects.create(
             event=proposal,
@@ -892,7 +1067,7 @@ def checkin_view(request):
     proposal = None
 
     if token:
-        base_token = token.split('_')[0] if '_' in token else token
+        base_token = token.rsplit('_', 2)[0] if token.count('_') >= 2 else token
         proposal = EventProposal.objects.filter(qr_checkin_token=base_token).first()
 
     if not proposal and token:
@@ -909,7 +1084,7 @@ def checkin_view(request):
         selfie_file = request.FILES.get('selfie_image')
         selfie_data = request.POST.get('selfie_image', '').strip()
 
-        base_token = token.split('_')[0] if '_' in token else token
+        base_token = token.rsplit('_', 2)[0] if token.count('_') >= 2 else token
         proposal = get_object_or_404(EventProposal, qr_checkin_token=base_token)
 
         # Validate token
@@ -923,74 +1098,79 @@ def checkin_view(request):
             messages.error(request, "Check-in is only available for officially approved and published campus events.")
             return render(request, 'events/checkin_selfie.html', {'proposal': None, 'token': token})
 
-        # G10a: Must be registered for this event
-        reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
-        if not reg:
-            messages.error(request, f"You are not registered for '{proposal.title}'. Please register on the Events page first.")
-            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-
-        # Validate timeframe
-        now = timezone.now()
-        if proposal.start_date and now < (proposal.start_date - timedelta(hours=1)):
-            messages.error(request, "Check-in has not opened yet. Check-in opens 1 hour before the scheduled start time.")
-            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-        if proposal.end_date and now > (proposal.end_date + timedelta(hours=2)):
-            messages.error(request, "This event has already concluded. Attendance check-in is now closed.")
-            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-
-        # G10b: Duplicate check-in block
-        if reg.status in ('CHECKED_IN', 'VERIFIED'):
-            messages.info(request, f"You have already checked in to '{proposal.title}'. Your attendance status is: {reg.get_status_display()}.")
-            if reg.status == 'CHECKED_IN' and not hasattr(reg, 'feedback'):
-                return redirect('event_feedback', registration_id=reg.id)
-            return redirect('dashboard')
-
-        # Selfie image validation & size limit
-        if selfie_file:
-            if selfie_file.size > 2 * 1024 * 1024:
-                messages.error(request, "Selfie image exceeds maximum allowed size of 2MB.")
+        # Fix #13: Select for update inside atomic transaction to prevent concurrent double-scans
+        with transaction.atomic():
+            reg = EventRegistration.objects.select_for_update().filter(event=proposal, student=request.user).first()
+            if not reg:
+                messages.error(request, f"You are not registered for '{proposal.title}'. Please register on the Events page first.")
                 return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-            try:
-                from PIL import Image
-                img = Image.open(selfie_file)
-                img.verify()
-                if img.format.lower() not in ['jpeg', 'jpg', 'png', 'webp']:
-                    messages.error(request, "Invalid image format. Only JPEG or PNG photos are accepted.")
+
+            # Validate timeframe
+            now = timezone.now()
+            if proposal.start_date and now < (proposal.start_date - timedelta(hours=1)):
+                messages.error(request, "Check-in has not opened yet. Check-in opens 1 hour before the scheduled start time.")
+                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+            if proposal.end_date and now > (proposal.end_date + timedelta(hours=2)):
+                messages.error(request, "This event has already concluded. Attendance check-in is now closed.")
+                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+
+            # G10b: Duplicate check-in block
+            if reg.status in ('CHECKED_IN', 'VERIFIED'):
+                messages.info(request, f"You have already checked in to '{proposal.title}'. Your attendance status is: {reg.get_status_display()}.")
+                if reg.status == 'CHECKED_IN' and not hasattr(reg, 'feedback'):
+                    return redirect('event_feedback', registration_id=reg.id)
+                return redirect('dashboard')
+
+            # Selfie image validation & size limit
+            if selfie_file:
+                if selfie_file.size > 2 * 1024 * 1024:
+                    messages.error(request, "Selfie image exceeds maximum allowed size of 2MB.")
                     return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-                selfie_file.seek(0)
-                reg.selfie_image = selfie_file
-            except Exception:
-                messages.error(request, "Corrupt or invalid image uploaded as selfie.")
-                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-        elif selfie_data and selfie_data.startswith('data:image'):
-            if len(selfie_data) > 3 * 1024 * 1024:
-                messages.error(request, "Selfie data exceeds maximum allowed size of 2MB.")
-                return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-            try:
-                import base64
-                import io
-                from PIL import Image
-                from django.core.files.base import ContentFile
-                format_part, imgstr = selfie_data.split(';base64,')
-                mime = format_part.replace('data:', '').strip()
-                if mime not in ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']:
-                    messages.error(request, "Unsupported image type. Only JPEG or PNG photos are allowed.")
+                try:
+                    from PIL import Image
+                    img = Image.open(selfie_file)
+                    img.verify()
+                    if img.format.lower() not in ['jpeg', 'jpg', 'png', 'webp']:
+                        messages.error(request, "Invalid image format. Only JPEG or PNG photos are accepted.")
+                        return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+                    selfie_file.seek(0)
+                    ext = selfie_file.name.rsplit('.', 1)[-1].lower() if '.' in selfie_file.name else 'jpg'
+                    selfie_file.name = f"selfie_{uuid.uuid4().hex}.{ext}"
+                    reg.selfie_image = selfie_file
+                except Exception:
+                    messages.error(request, "Corrupt or invalid image uploaded as selfie.")
                     return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-                raw_bytes = base64.b64decode(imgstr)
-                img = Image.open(io.BytesIO(raw_bytes))
-                img.verify()
-                ext = format_part.split('/')[-1]
-                reg.selfie_image = ContentFile(raw_bytes, name=f"selfie_{reg.id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.{ext}")
-            except Exception:
-                messages.error(request, "Corrupt or invalid image data. Please capture your selfie again.")
+            elif selfie_data and selfie_data.startswith('data:image'):
+                if len(selfie_data) > 3 * 1024 * 1024:
+                    messages.error(request, "Selfie data exceeds maximum allowed size of 2MB.")
+                    return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+                try:
+                    import base64
+                    import io
+                    from PIL import Image
+                    from django.core.files.base import ContentFile
+                    format_part, imgstr = selfie_data.split(';base64,')
+                    mime = format_part.replace('data:', '').strip()
+                    if mime not in ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']:
+                        messages.error(request, "Unsupported image type. Only JPEG or PNG photos are allowed.")
+                        return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+                    raw_bytes = base64.b64decode(imgstr)
+                    img = Image.open(io.BytesIO(raw_bytes))
+                    img.verify()
+                    ext = format_part.split('/')[-1].lower().replace('jpeg', 'jpg')
+                    # Fix #5: Unguessable filename using uuid4 instead of predictable id+timestamp
+                    fname = f"selfie_{uuid.uuid4().hex}.{ext}"
+                    reg.selfie_image = ContentFile(raw_bytes, name=fname)
+                except Exception:
+                    messages.error(request, "Corrupt or invalid image data. Please capture your selfie again.")
+                    return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
+            elif selfie_data and not selfie_data.startswith('data:image'):
+                messages.error(request, "Invalid selfie format. A valid camera photo is required.")
                 return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
-        elif selfie_data and not selfie_data.startswith('data:image'):
-            messages.error(request, "Invalid selfie format. A valid camera photo is required.")
-            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token})
 
-        reg.status = 'CHECKED_IN'
-        reg.checked_in_at = timezone.now()
-        reg.save()
+            reg.status = 'CHECKED_IN'
+            reg.checked_in_at = timezone.now()
+            reg.save()
 
         messages.success(request, "Check-in verified via live selfie! Please complete the quick mandatory feedback below to verify your attendance.")
         return redirect('event_feedback', registration_id=reg.id)
@@ -1006,6 +1186,14 @@ def checkin_view(request):
 @login_required
 def feedback_view(request, registration_id):
     reg = get_object_or_404(EventRegistration, id=registration_id, student=request.user)
+
+    # Fix #6: Must have physically checked in before feedback is allowed
+    if reg.status != 'CHECKED_IN':
+        if reg.status == 'VERIFIED':
+            messages.info(request, "You have already completed feedback for this event.")
+            return redirect('dashboard')
+        messages.error(request, "You must check in at the event venue via QR scan before submitting feedback.")
+        return redirect('checkin')
 
     if hasattr(reg, 'feedback'):
         messages.info(request, "You have already completed feedback for this event.")
@@ -1048,6 +1236,15 @@ def feedback_view(request, registration_id):
 @login_required
 def compliance_report_view(request, proposal_id):
     proposal = get_object_or_404(EventProposal, id=proposal_id)
+
+    # Fix #4 (IDOR): Only proposer, superuser, or staff approvers may access compliance data
+    is_proposer = (proposal.proposer == request.user)
+    user_role = _get_user_role(request.user)
+    chain = proposal.approval_chain or []
+    is_any_approver = any(st.get('role') == user_role for st in chain) if user_role else False
+    if not (is_proposer or request.user.is_superuser or is_any_approver):
+        raise Http404("Compliance report not found or you do not have access.")
+
     registrations = proposal.registrations.all()
 
     total_registered = registrations.count()

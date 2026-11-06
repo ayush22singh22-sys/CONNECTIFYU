@@ -346,11 +346,10 @@ class BugPermissionsSecurityTestCase(TestCase):
         return self.client.login(username=user.username, password='password123')
 
     def test_student_can_access_approver_urls(self):
-        """Student viewing proposal detail does not get approver action form."""
+        """Fix #4: Student cannot access proposal_detail_view (returns 404)."""
         self.login_as(self.student)
         res = self.client.get(f'/proposals/{self.proposal.id}/')
-        self.assertEqual(res.status_code, 200)
-        self.assertFalse(res.context.get('is_approver', False))
+        self.assertEqual(res.status_code, 404)
 
     def test_idor_another_facultys_event(self):
         """Faculty cannot edit another faculty coordinator's event proposal."""
@@ -438,7 +437,7 @@ class BugCheckInQRSelfieTestCase(TestCase):
         """Duplicate check-in does not overwrite or fail."""
         self.client.login(username='student4', password='password123')
 
-        token = self.proposal.qr_checkin_token
+        token = self.proposal.get_rotating_qr_token()[0]
         res1 = self.client.post(f'/events/checkin/?token={token}', {
             'token': token,
             'selfie_image': VALID_PNG_B64,

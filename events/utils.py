@@ -3,6 +3,7 @@ import base64
 import qrcode
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import transaction
 from .models import LogisticsNotification, OrganizingUnit
 
 
@@ -83,9 +84,10 @@ def get_default_chain(chain_type, unit_id=None, custom_roles=None):
         chain = []
         if custom_roles:
             seen_roles = set()
+            # Fix #18: Whitelist valid roles only to prevent deadlock from arbitrary role names
+            valid_custom_roles = set(ROLE_DESCRIPTIONS.keys()) - {'DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'}
             for r in custom_roles:
-                # Never duplicate mandatory roles in custom head, nor duplicate custom roles
-                if r not in ['DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'] and r not in seen_roles:
+                if r in valid_custom_roles and r not in seen_roles:
                     seen_roles.add(r)
                     chain.append({"role": r, "title": ROLE_DESCRIPTIONS.get(r, r)})
 
@@ -131,10 +133,22 @@ def dispatch_logistics_notifications(proposal):
     Step 5 automated notification:
     Once Director grants final clearance, system automatically emails
     the college's transport, mess, and maintenance sections with requirements.
+    Fix #10: Idempotent get_or_create to prevent duplicate notifications.
+    Fix #11: Dispatch emails via transaction.on_commit to avoid side-effects on rollback.
     """
     notifications = []
-
     default_from = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply-events@college.ac.in')
+
+    def _queue_email(subject, body, recipient):
+        def _send():
+            try:
+                send_mail(subject, body, default_from, [recipient], fail_silently=True)
+            except Exception:
+                pass
+        try:
+            transaction.on_commit(_send)
+        except Exception:
+            _send()
 
     # 1. Mess & Catering Section
     if proposal.mess_requirements:
@@ -149,24 +163,18 @@ def dispatch_logistics_notifications(proposal):
             f"----------------------------------------\n"
             f"Specific Mess Requirements:\n{proposal.mess_requirements}\n"
         )
-        notif = LogisticsNotification.objects.create(
+        notif, created = LogisticsNotification.objects.get_or_create(
             proposal=proposal,
             logistics_type='MESS',
-            recipient_email='catering.mess@college.ac.in',
-            subject=f"[Approved Event Logistics] Catering Request: {proposal.title}",
-            body=mess_body
+            defaults={
+                'recipient_email': 'catering.mess@college.ac.in',
+                'subject': f"[Approved Event Logistics] Catering Request: {proposal.title}",
+                'body': mess_body,
+            }
         )
         notifications.append(notif)
-        try:
-            send_mail(
-                subject=notif.subject,
-                message=notif.body,
-                from_email=default_from,
-                recipient_list=[notif.recipient_email],
-                fail_silently=True
-            )
-        except Exception:
-            pass
+        if created:
+            _queue_email(notif.subject, notif.body, notif.recipient_email)
 
     # 2. Transport & Fleet Section
     if proposal.transport_requirements:
@@ -178,24 +186,18 @@ def dispatch_logistics_notifications(proposal):
             f"----------------------------------------\n"
             f"Specific Transport Requirements:\n{proposal.transport_requirements}\n"
         )
-        notif = LogisticsNotification.objects.create(
+        notif, created = LogisticsNotification.objects.get_or_create(
             proposal=proposal,
             logistics_type='TRANSPORT',
-            recipient_email='estate.transport@college.ac.in',
-            subject=f"[Approved Event Logistics] Transport Request: {proposal.title}",
-            body=transport_body
+            defaults={
+                'recipient_email': 'estate.transport@college.ac.in',
+                'subject': f"[Approved Event Logistics] Transport Request: {proposal.title}",
+                'body': transport_body,
+            }
         )
         notifications.append(notif)
-        try:
-            send_mail(
-                subject=notif.subject,
-                message=notif.body,
-                from_email=default_from,
-                recipient_list=[notif.recipient_email],
-                fail_silently=True
-            )
-        except Exception:
-            pass
+        if created:
+            _queue_email(notif.subject, notif.body, notif.recipient_email)
 
     # 3. Auditorium, Estate & AV Maintenance Section
     if proposal.maintenance_requirements:
@@ -207,23 +209,17 @@ def dispatch_logistics_notifications(proposal):
             f"----------------------------------------\n"
             f"Specific Maintenance Requirements:\n{proposal.maintenance_requirements}\n"
         )
-        notif = LogisticsNotification.objects.create(
+        notif, created = LogisticsNotification.objects.get_or_create(
             proposal=proposal,
             logistics_type='MAINTENANCE',
-            recipient_email='maintenance.av@college.ac.in',
-            subject=f"[Approved Event Logistics] AV & Hall Setup: {proposal.title}",
-            body=maint_body
+            defaults={
+                'recipient_email': 'maintenance.av@college.ac.in',
+                'subject': f"[Approved Event Logistics] AV & Hall Setup: {proposal.title}",
+                'body': maint_body,
+            }
         )
         notifications.append(notif)
-        try:
-            send_mail(
-                subject=notif.subject,
-                message=notif.body,
-                from_email=default_from,
-                recipient_list=[notif.recipient_email],
-                fail_silently=True
-            )
-        except Exception:
-            pass
+        if created:
+            _queue_email(notif.subject, notif.body, notif.recipient_email)
 
     return notifications

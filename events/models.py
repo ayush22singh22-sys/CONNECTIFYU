@@ -222,13 +222,9 @@ class EventProposal(models.Model):
         base_tok = str(self.qr_checkin_token)
         secret = str(self.qr_rotation_secret)
 
-        # Fallback exact static token check
-        if token_string == base_tok:
-            return True, "Valid token"
-
-        parts = token_string.split('_')
+        parts = token_string.rsplit('_', 2)
         if len(parts) != 3:
-            return False, "Invalid QR code format."
+            return False, "Invalid QR code format. Live rotating QR token required."
 
         base_token, window_str, sig = parts
         if base_token != base_tok:
@@ -300,9 +296,18 @@ class EventProposal(models.Model):
         elif current_role == 'HOD_MECH':
             return user.username == 'hod_mech' or (user_role == 'HOD' and ('Mechanical' in user.profile.department or 'Mech' in user.profile.department))
         elif current_role == 'HOD':
-            return (user_role == 'HOD' and (self.organizing_unit.head == user or self.organizing_unit.unit_type == 'DEPARTMENT'))
+            is_head = self.organizing_unit and self.organizing_unit.head == user
+            is_staff_unit = hasattr(user, 'staff_profile') and user.staff_profile.organizing_unit == self.organizing_unit
+            dept_match = False
+            if hasattr(user, 'profile') and user.profile.department and self.organizing_unit:
+                u_dept = user.profile.department.strip().lower()
+                o_name = self.organizing_unit.name.strip().lower()
+                dept_match = (u_dept in o_name or o_name in u_dept)
+            return user_role == 'HOD' and (is_head or is_staff_unit or dept_match)
         elif current_role in ['CLUB_HEAD', 'CLUB_ROBOTICS']:
-            return user.username in ['club_lead', 'club_cultural'] or (user_role in ['CLUB_HEAD', 'FACULTY'] and (self.organizing_unit.head == user or self.organizing_unit.unit_type == 'CLUB'))
+            is_head = self.organizing_unit and self.organizing_unit.head == user
+            is_staff_unit = hasattr(user, 'staff_profile') and user.staff_profile.organizing_unit == self.organizing_unit
+            return user.username in ['club_lead', 'club_cultural'] or (user_role in ['CLUB_HEAD', 'FACULTY'] and (is_head or is_staff_unit))
         elif current_role == 'CLUB_CULTURAL':
             return user.username == 'club_cultural' or user_role == 'CLUB_HEAD'
         elif current_role == 'REGISTRAR':
@@ -380,6 +385,12 @@ class EventRegistration(models.Model):
     class Meta:
         unique_together = ('event', 'student')
 
+    def delete(self, *args, **kwargs):
+        # Fix #21: Clean up orphan selfie media on registration deletion
+        if self.selfie_image:
+            self.selfie_image.delete(save=False)
+        super().delete(*args, **kwargs)
+
     def __str__(self):
         return f"{self.student.username} -> {self.event.title} ({self.role})"
 
@@ -420,6 +431,9 @@ class LogisticsNotification(models.Model):
     subject = models.CharField(max_length=255)
     body = models.TextField()
     sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('proposal', 'logistics_type')
 
     def __str__(self):
         return f"{self.get_logistics_type_display()} - {self.proposal.title}"

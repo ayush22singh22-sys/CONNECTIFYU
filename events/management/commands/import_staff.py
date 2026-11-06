@@ -65,10 +65,10 @@ class Command(BaseCommand):
                     errors.append(f"Line {lineno}: invalid role '{role}'. Valid: {list(valid_roles.keys())}")
                     continue
 
-                # Find or assign unit if specified
+                # Find or assign unit if specified (exact match preferred over substring)
                 unit = None
                 if unit_name:
-                    unit = OrganizingUnit.objects.filter(name__icontains=unit_name).first()
+                    unit = OrganizingUnit.objects.filter(name__iexact=unit_name).first() or OrganizingUnit.objects.filter(name__icontains=unit_name).first()
 
                 user, created = User.objects.get_or_create(
                     username=username,
