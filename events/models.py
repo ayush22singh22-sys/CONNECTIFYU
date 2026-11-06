@@ -1,4 +1,7 @@
 import uuid
+import time
+import hmac
+import hashlib
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -55,7 +58,8 @@ class EventProposal(models.Model):
     STATUS_CHOICES = [
         ('DRAFT', 'Draft'),
         ('UNDER_REVIEW', 'Under Multi-Stage Review'),
-        ('APPROVED', 'Approved & Published'),
+        ('APPROVED_PENDING_PUBLISH', 'Approved by Director (Awaiting Faculty Poster & Publish)'),
+        ('APPROVED', 'Approved & Published to Campus'),
         ('REVISION_REQUESTED', 'Revision Requested'),
         ('REJECTED', 'Rejected'),
         ('COMPLETED', 'Completed'),
@@ -87,26 +91,106 @@ class EventProposal(models.Model):
     venue = models.CharField(max_length=200)
     expected_attendees = models.PositiveIntegerField(default=100)
 
+    # Poster & Faculty Publishing Gate
+    poster_image = models.ImageField(upload_to='event_posters/', blank=True, null=True)
+    poster_data_uri = models.TextField(blank=True, help_text="Base64 or image URL for event poster")
+    published_at = models.DateTimeField(null=True, blank=True)
+
     # Campus Logistics Requirements
     mess_requirements = models.TextField(blank=True, help_text="Catering & refreshment arrangements")
     transport_requirements = models.TextField(blank=True, help_text="Vehicle fleet & airport/station pickup")
     maintenance_requirements = models.TextField(blank=True, help_text="Auditorium AC, PA system, audio/visual setup")
 
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='UNDER_REVIEW')
+    status = models.CharField(max_length=35, choices=STATUS_CHOICES, default='UNDER_REVIEW')
     revision_count = models.PositiveIntegerField(default=0)
     is_revision = models.BooleanField(default=False)
 
     qr_checkin_token = models.CharField(max_length=64, default=uuid.uuid4, unique=True)
+    qr_rotation_secret = models.CharField(max_length=64, default=uuid.uuid4)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    ROTATION_INTERVAL = 20  # seconds per QR rotation
 
     def save(self, *args, **kwargs):
         if not self.approved_budget or self.approved_budget == 0:
             self.approved_budget = self.requested_budget
         if not self.qr_checkin_token:
             self.qr_checkin_token = str(uuid.uuid4())
+        else:
+            self.qr_checkin_token = str(self.qr_checkin_token)
+
+        if not self.qr_rotation_secret:
+            self.qr_rotation_secret = str(uuid.uuid4())
+        else:
+            self.qr_rotation_secret = str(self.qr_rotation_secret)
+
         super().save(*args, **kwargs)
+
+    def get_rotating_qr_token(self):
+        """
+        Generates a time-synced dynamic token that rotates every ROTATION_INTERVAL seconds.
+        Prevents students from sharing photos of QR code with absent friends.
+        """
+        now_ts = int(time.time())
+        window = now_ts // self.ROTATION_INTERVAL
+        seconds_left = self.ROTATION_INTERVAL - (now_ts % self.ROTATION_INTERVAL)
+        
+        base_tok = str(self.qr_checkin_token)
+        secret = str(self.qr_rotation_secret)
+
+        # Compute HMAC signature for this window
+        msg = f"{base_tok}:{window}".encode('utf-8')
+        sig = hmac.new(secret.encode('utf-8'), msg, hashlib.sha256).hexdigest()[:10]
+        token = f"{base_tok}_{window}_{sig}"
+        return token, seconds_left
+
+    def validate_rotating_token(self, token_string):
+        """
+        Validates if the provided token belongs to the current or immediate previous time window
+        (allows 20-40s grace period for camera capture / network transit).
+        Also accepts static qr_checkin_token as fallback for manual check-in testing.
+        """
+        if not token_string:
+            return False, "Token is required"
+
+        token_string = token_string.strip()
+        base_tok = str(self.qr_checkin_token)
+        secret = str(self.qr_rotation_secret)
+
+        # Fallback exact static token check
+        if token_string == base_tok:
+            return True, "Valid token"
+
+        parts = token_string.split('_')
+        if len(parts) != 3:
+            return False, "Invalid QR code format."
+
+        base_token, window_str, sig = parts
+        if base_token != base_tok:
+            return False, "QR code does not match this event."
+
+        try:
+            window = int(window_str)
+        except ValueError:
+            return False, "Invalid QR rotation timestamp."
+
+        current_window = int(time.time()) // self.ROTATION_INTERVAL
+        
+        # Check signature
+        msg = f"{base_tok}:{window}".encode('utf-8')
+        expected_sig = hmac.new(secret.encode('utf-8'), msg, hashlib.sha256).hexdigest()[:10]
+        if not hmac.compare_digest(sig, expected_sig):
+            return False, "Tampered or forged QR code."
+
+        # Allow current window and 1 past window
+        if window < (current_window - 1):
+            return False, "QR Code Expired: This code has expired! Please scan the live rotating QR on the auditorium screen."
+        if window > (current_window + 1):
+            return False, "Invalid forward timestamp on QR code."
+
+        return True, "Valid rotating token"
 
     @property
     def current_stage(self):
@@ -146,7 +230,6 @@ class EventProposal(models.Model):
 
         user_role = user.profile.role
 
-        # Stage 1 Unit Head can be HOD for department or Club Head for club
         if current_role == 'HOD':
             return (user_role == 'HOD' and (self.organizing_unit.head == user or self.organizing_unit.unit_type == 'DEPARTMENT'))
         elif current_role == 'CLUB_HEAD':

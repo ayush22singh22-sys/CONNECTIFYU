@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Live Event Attendance Screen - {{ proposal.title }}{% endblock %}
+{% block title %}Live Rotating QR Attendance Screen - {{ proposal.title }}{% endblock %}
 
 {% block content %}
 <div class="max-w-5xl mx-auto space-y-6">
@@ -11,135 +11,199 @@
             <i class="fa-solid fa-arrow-left mr-1.5"></i>Back to Proposal
         </a>
         <div class="flex items-center space-x-2">
-            <button onclick="window.location.reload()" class="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl shadow-xs transition">
-                <i class="fa-solid fa-rotate mr-1.5"></i>Refresh Headcount
-            </button>
-            <button onclick="document.documentElement.requestFullscreen()" class="px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs rounded-xl transition">
-                <i class="fa-solid fa-expand mr-1.5"></i>Projector Fullscreen
+            <button onclick="document.documentElement.requestFullscreen()" class="px-3.5 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition flex items-center">
+                <i class="fa-solid fa-expand mr-1.5"></i>Auditorium Fullscreen
             </button>
         </div>
     </div>
 
     <!-- Presentation Stage Box (Designed to be beamed onto a large projector screen) -->
-    <div class="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 text-white rounded-3xl p-8 sm:p-12 shadow-2xl border border-indigo-800 text-center relative overflow-hidden">
+    <div class="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 text-white rounded-3xl p-6 sm:p-10 shadow-2xl border border-indigo-800 text-center relative overflow-hidden">
         
-        <!-- Background Ambient Accents -->
-        <div class="absolute -top-24 -left-24 w-72 h-72 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="absolute -bottom-24 -right-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <!-- Ambient accents -->
+        <div class="absolute -top-24 -left-24 w-72 h-72 bg-brand-500/15 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -bottom-24 -right-24 w-72 h-72 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div class="relative z-10 max-w-3xl mx-auto space-y-6">
+        <div class="relative z-10 max-w-2xl mx-auto space-y-5">
             
             <!-- Badges -->
-            <div class="inline-flex items-center space-x-2 bg-white/10 px-4 py-1.5 rounded-full border border-white/10 text-xs font-semibold backdrop-blur-sm">
+            <div class="inline-flex items-center space-x-2 bg-white/10 px-4 py-1.5 rounded-full border border-white/20 text-xs font-semibold backdrop-blur-sm">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                <span class="text-emerald-300">Live Attendance Check-In Active</span>
-                <span class="text-indigo-300">&bull; {{ proposal.organizing_unit.name }}</span>
+                <span class="text-emerald-300 font-bold">Dynamic Rotating QR Active</span>
+                <span class="text-indigo-200">&bull; Anti-Proxy Protocol</span>
             </div>
 
-            <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white leading-tight">
+            <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
                 {{ proposal.title }}
             </h1>
 
-            <p class="text-sm text-indigo-200 font-medium">
-                Guest Speaker: <strong class="text-white">{{ proposal.guest_speaker }}</strong> &bull; {{ proposal.venue }}
+            <p class="text-xs sm:text-sm text-indigo-200 font-medium">
+                Chief Guest: <strong class="text-white">{{ proposal.guest_speaker }}</strong> &bull; {{ proposal.venue }}
             </p>
 
-            <!-- Projected QR Code Card -->
-            <div class="bg-white text-slate-900 p-6 sm:p-8 rounded-3xl shadow-2xl inline-block mx-auto max-w-sm border-4 border-indigo-500/30">
-                <img src="{{ qr_data_uri }}" alt="Live Check-in QR Code" class="w-64 h-64 sm:w-72 sm:h-72 mx-auto rounded-xl object-contain shadow-inner">
+            <!-- Projected Rotating QR Code Box -->
+            <div class="bg-white text-slate-900 p-6 rounded-3xl shadow-2xl inline-block mx-auto max-w-sm border-4 border-indigo-500/30 relative">
                 
-                <div class="mt-4 pt-4 border-t border-slate-100">
+                <!-- Rotating Countdown Ring / Bar -->
+                <div class="mb-3 flex items-center justify-between text-xs">
+                    <span class="font-bold text-indigo-900 flex items-center">
+                        <i class="fa-solid fa-arrows-rotate mr-1.5 text-indigo-600 animate-spin"></i>Rotating Code
+                    </span>
+                    <span class="font-mono font-extrabold text-brand-600 text-xs bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200">
+                        Expires in <span id="countdownTimer">{{ seconds_left }}</span>s
+                    </span>
+                </div>
+
+                <!-- Animated Progress Bar -->
+                <div class="w-full bg-slate-100 rounded-full h-1.5 mb-4 overflow-hidden">
+                    <div id="progressBar" class="bg-brand-600 h-1.5 rounded-full transition-all duration-1000" style="width: 100%;"></div>
+                </div>
+
+                <!-- QR Image -->
+                <div class="relative p-2 bg-slate-50 rounded-2xl border border-slate-200 shadow-inner">
+                    <img id="qrImage" src="{{ qr_data_uri }}" alt="Rotating QR Code" class="w-64 h-64 mx-auto rounded-xl object-contain">
+                </div>
+
+                <div class="mt-3 pt-3 border-t border-slate-100 space-y-1">
                     <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Step 1: Scan With Phone Camera</div>
-                    <div class="text-xs font-semibold text-brand-600 mt-0.5">Step 2: Submit Live Front-Camera Selfie</div>
+                    <div class="text-xs font-semibold text-emerald-700">Step 2: Submit Live Front-Camera Selfie</div>
                 </div>
             </div>
 
-            <!-- Manual Link / Token Fallback -->
-            <div class="text-xs text-indigo-200/70">
-                Direct URL: <code class="bg-black/30 px-3 py-1 rounded-lg font-mono text-indigo-300 select-all">{{ checkin_url }}</code>
+            <!-- Anti-Proxy Security Explainer -->
+            <div class="text-[11px] text-indigo-200/80 max-w-lg mx-auto bg-black/30 p-2.5 rounded-xl border border-white/10">
+                <i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i>
+                <strong>Anti-Proxy Notice:</strong> This QR code automatically expires and rotates every {{ interval }}s. Photos taken and forwarded to absent students will expire before they can be redeemed.
             </div>
 
         </div>
 
     </div>
 
-    <!-- Live Attendance Ticker Cards -->
+    <!-- Live Attendance Ticker Cards (Updated dynamically) -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
             <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Pre-Registered Students</div>
-            <div class="text-3xl font-black text-slate-900">{{ stats.total_registered }}</div>
+            <div class="text-3xl font-black text-slate-900" id="totalRegisteredCount">{{ stats.total_registered }}</div>
             <div class="text-[11px] text-slate-400 mt-1">Expected: {{ proposal.expected_attendees }}</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
             <div class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Selfie Checked-In</div>
-            <div class="text-3xl font-black text-amber-600">{{ stats.checked_in }}</div>
-            <div class="text-[11px] text-slate-400 mt-1">Pending feedback submission</div>
+            <div class="text-3xl font-black text-amber-600" id="checkedInCount">{{ stats.checked_in }}</div>
+            <div class="text-[11px] text-slate-400 mt-1">Awaiting feedback completion</div>
         </div>
 
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
             <div class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Attendance Verified</div>
-            <div class="text-3xl font-black text-emerald-600">{{ stats.verified }}</div>
-            <div class="text-[11px] text-slate-400 mt-1">Feedback completed (100% confirmed)</div>
+            <div class="text-3xl font-black text-emerald-600" id="verifiedCount">{{ stats.verified }}</div>
+            <div class="text-[11px] text-slate-400 mt-1">Feedback certified (100% genuine)</div>
         </div>
     </div>
 
     <!-- Live Roster of Attendees -->
     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-4">
-            Live Attendee Log ({{ registrations|length }})
-        </h3>
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
+                Live Attendance Audit Log
+            </h3>
+            <span class="text-xs text-slate-400">Auto-refreshes seamlessly</span>
+        </div>
 
-        {% if registrations %}
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs">
-                    <thead>
-                        <tr class="bg-slate-50 text-slate-500 uppercase font-semibold border-b border-slate-200">
-                            <th class="py-2.5 px-4">Student Name & Roll No</th>
-                            <th class="py-2.5 px-4">Role</th>
-                            <th class="py-2.5 px-4">Check-In Status</th>
-                            <th class="py-2.5 px-4">Check-In Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 font-medium">
-                        {% for reg in registrations %}
-                            <tr>
-                                <td class="py-3 px-4">
-                                    <div class="font-bold text-slate-900">{{ reg.student.get_full_name|default:reg.student.username }}</div>
-                                    <div class="text-[11px] text-slate-400">{{ reg.student.profile.roll_or_emp_id|default:reg.student.email }}</div>
-                                </td>
-                                <td class="py-3 px-4">
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                                        {{ reg.get_role_display }}
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-500 uppercase font-semibold border-b border-slate-200">
+                        <th class="py-2.5 px-4">Student Name & Roll No</th>
+                        <th class="py-2.5 px-4">Role</th>
+                        <th class="py-2.5 px-4">Check-In Status</th>
+                        <th class="py-2.5 px-4">Check-In Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-medium" id="attendeesTableBody">
+                    {% for reg in registrations %}
+                        <tr>
+                            <td class="py-3 px-4">
+                                <div class="font-bold text-slate-900">{{ reg.student.get_full_name|default:reg.student.username }}</div>
+                                <div class="text-[11px] text-slate-400">{{ reg.student.profile.roll_or_emp_id|default:reg.student.email }}</div>
+                            </td>
+                            <td class="py-3 px-4">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                    {{ reg.get_role_display }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4">
+                                {% if reg.status == 'VERIFIED' %}
+                                    <span class="inline-flex items-center text-emerald-700 font-bold">
+                                        <i class="fa-solid fa-circle-check mr-1.5"></i>Verified
                                     </span>
-                                </td>
-                                <td class="py-3 px-4">
-                                    {% if reg.status == 'VERIFIED' %}
-                                        <span class="inline-flex items-center text-emerald-700 font-bold">
-                                            <i class="fa-solid fa-circle-check mr-1.5"></i>Verified
-                                        </span>
-                                    {% elif reg.status == 'CHECKED_IN' %}
-                                        <span class="inline-flex items-center text-amber-700 font-bold">
-                                            <i class="fa-solid fa-camera mr-1.5"></i>Selfie Submitted
-                                        </span>
-                                    {% else %}
-                                        <span class="text-slate-400">Registered</span>
-                                    {% endif %}
-                                </td>
-                                <td class="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                                    {{ reg.checked_in_at|date:"h:i:s A"|default:"--" }}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <div class="text-center py-6 text-xs text-slate-400">
-                No student has checked in yet. Waiting for live scans...
-            </div>
-        {% endif %}
+                                {% elif reg.status == 'CHECKED_IN' %}
+                                    <span class="inline-flex items-center text-amber-700 font-bold">
+                                        <i class="fa-solid fa-camera mr-1.5"></i>Selfie Submitted
+                                    </span>
+                                {% else %}
+                                    <span class="text-slate-400">Registered</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-4 text-slate-500 font-mono text-[11px]">
+                                {{ reg.checked_in_at|date:"h:i:s A"|default:"--" }}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center py-6 text-xs text-slate-400">
+                                Waiting for live scans from auditorium...
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const proposalId = {{ proposal.id }};
+    const intervalDuration = {{ interval|default:20 }};
+    let timeLeft = {{ seconds_left|default:20 }};
+
+    const countdownTimer = document.getElementById('countdownTimer');
+    const progressBar = document.getElementById('progressBar');
+    const qrImage = document.getElementById('qrImage');
+    const checkedInCount = document.getElementById('checkedInCount');
+    const verifiedCount = document.getElementById('verifiedCount');
+    const totalRegisteredCount = document.getElementById('totalRegisteredCount');
+
+    async function fetchNewRotatingQR() {
+        try {
+            const res = await fetch(`/events/${proposalId}/rotating-qr-api/`);
+            if (res.ok) {
+                const data = await res.json();
+                qrImage.src = data.qr_data_uri;
+                timeLeft = data.seconds_left;
+                countdownTimer.innerText = timeLeft;
+                if (checkedInCount) checkedInCount.innerText = data.checked_in;
+                if (verifiedCount) verifiedCount.innerText = data.verified;
+                if (totalRegisteredCount) totalRegisteredCount.innerText = data.total_registered;
+            }
+        } catch (err) {
+            console.warn("Rotating QR polling warning:", err);
+        }
+    }
+
+    // Tick every second
+    setInterval(() => {
+        timeLeft -= 1;
+        if (timeLeft <= 0) {
+            timeLeft = intervalDuration;
+            fetchNewRotatingQR();
+        }
+        countdownTimer.innerText = timeLeft;
+        const pct = (timeLeft / intervalDuration) * 100;
+        progressBar.style.width = pct + '%';
+    }, 1000);
+</script>
 {% endblock %}

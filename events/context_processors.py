@@ -3,15 +3,15 @@ from events.models import EventProposal
 def demo_roles_processor(request):
     """Provides authentic Indian college demo user accounts and live pending review counters."""
     demo_accounts = [
+        {'username': 'admin', 'label': 'Superadmin (DB Admin)', 'name': 'Super Administrator', 'role': 'SUPERADMIN'},
         {'username': 'faculty', 'label': 'Faculty Coordinator', 'name': 'Prof. Rajesh Sharma', 'role': 'FACULTY'},
-        {'username': 'hod_cse', 'label': 'HOD (CSE Dept)', 'name': 'Dr. K. V. Ramanathan', 'role': 'HOD'},
-        {'username': 'club_lead', 'label': 'Club Faculty Advisor', 'name': 'Prof. Priya Nair', 'role': 'CLUB_HEAD'},
-        {'username': 'registrar', 'label': 'Registrar (Admin/HR)', 'name': 'Smt. Sunita Deshmukh', 'role': 'REGISTRAR'},
-        {'username': 'dean_research', 'label': 'Dean (R&D)', 'name': 'Dr. P. Venkatraman', 'role': 'DEAN_RESEARCH'},
-        {'username': 'dean_dsw', 'label': 'Dean (Student Welfare)', 'name': 'Dr. Alok Sen', 'role': 'DEAN_STUDENT_WELFARE'},
-        {'username': 'dean_finance', 'label': 'Dean (Finance & Accounts)', 'name': 'Dr. Suresh Chandra', 'role': 'DEAN_ACCOUNTS'},
-        {'username': 'dean_academics', 'label': 'Dean (Academics)', 'name': 'Dr. Meenakshi Sundaram', 'role': 'DEAN_ACADEMICS'},
-        {'username': 'director', 'label': 'Director of Institute', 'name': 'Dr. R. Chidambaram', 'role': 'DIRECTOR'},
+        {'username': 'hod_cse', 'label': 'HOD (CSE)', 'name': 'Dr. K. V. Ramanathan', 'role': 'HOD'},
+        {'username': 'hod_ece', 'label': 'HOD (ECE)', 'name': 'Dr. Sunita Kulkarni', 'role': 'HOD'},
+        {'username': 'hod_mech', 'label': 'HOD (Mech)', 'name': 'Dr. Vikramaditya Rathore', 'role': 'HOD'},
+        {'username': 'club_lead', 'label': 'Club Advisor', 'name': 'Prof. Priya Nair', 'role': 'CLUB_HEAD'},
+        {'username': 'dean_finance', 'label': 'Dean (Finance)*', 'name': 'Dr. Suresh Chandra', 'role': 'DEAN_ACCOUNTS'},
+        {'username': 'dean_academics', 'label': 'Dean (Academics)*', 'name': 'Dr. Meenakshi Sundaram', 'role': 'DEAN_ACADEMICS'},
+        {'username': 'director', 'label': 'Director*', 'name': 'Dr. R. Chidambaram', 'role': 'DIRECTOR'},
         {'username': 'student1', 'label': 'Student 1', 'name': 'Aarav Patel', 'role': 'STUDENT'},
         {'username': 'student2', 'label': 'Student 2', 'name': 'Ananya Sen', 'role': 'STUDENT'},
     ]

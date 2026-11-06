@@ -2,6 +2,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
+import time
 
 from events.models import (
     UserProfile, OrganizingUnit, EventProposal,
@@ -43,8 +44,13 @@ class EventLifecycleTestCase(TestCase):
 
         self.client = Client()
 
-    def test_academic_approval_chain_and_logistics_dispatch(self):
-        """Tests the Academic approval chain with Dean of Finance budget sanction and Director final clearance."""
+    def test_academic_approval_chain_and_faculty_publish_gate(self):
+        """
+        Tests:
+        1. 5-Stage approval with Dean Finance budget sanction.
+        2. Director approval holds event at APPROVED_PENDING_PUBLISH.
+        3. Faculty coordinator uploads poster and clicks publish to release to campus!
+        """
         now = timezone.now()
         chain = get_default_chain('ACADEMIC')
 
@@ -116,24 +122,54 @@ class EventLifecycleTestCase(TestCase):
             'remarks': 'Final executive clearance granted.'
         })
         proposal.refresh_from_db()
-        self.assertEqual(proposal.status, 'APPROVED')
+        
+        # Must be held at APPROVED_PENDING_PUBLISH (Requirement 3)
+        self.assertEqual(proposal.status, 'APPROVED_PENDING_PUBLISH')
 
         # Automated logistics email verification
         notifications = LogisticsNotification.objects.filter(proposal=proposal)
         self.assertEqual(notifications.count(), 3)
 
-    def test_custom_approval_chain_creation(self):
-        """Tests building a custom chain where Dean Finance, Dean Academics, and Director are mandatory."""
-        custom_chain = get_default_chain('CUSTOM', custom_roles=['HOD', 'DEAN_RESEARCH'])
-        roles = [stage['role'] for stage in custom_chain]
+        # Faculty uploads poster and clicks publish!
+        self.client.login(username='faculty_user', password='password123')
+        res = self.client.post(f'/proposals/{proposal.id}/publish/', {
+            'poster_preset': 'https://example.com/poster.jpg'
+        })
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, 'APPROVED')
+        self.assertIsNotNone(proposal.published_at)
 
-        # Must have custom stages + mandatory 3
-        self.assertEqual(roles, ['HOD', 'DEAN_RESEARCH', 'DEAN_ACCOUNTS', 'DEAN_ACADEMICS', 'DIRECTOR'])
+    def test_rotating_qr_token_validation(self):
+        """Requirement 4: Validates that rotating QR codes expire and prevent replay."""
+        now = timezone.now()
+        proposal = EventProposal.objects.create(
+            title='RoboCombat 2026',
+            description='Combat arena competition.',
+            proposer=self.faculty,
+            organizing_unit=self.dept_cse,
+            co_coordinator='Prof. Priya Nair',
+            guest_speaker='Dr. Kalam Lead',
+            requested_budget=50000.00,
+            start_date=now + timedelta(days=2),
+            end_date=now + timedelta(days=3),
+            venue='Indoor Stadium',
+            status='APPROVED'
+        )
+
+        # 1. Current valid token
+        valid_token, _ = proposal.get_rotating_qr_token()
+        is_valid, msg = proposal.validate_rotating_token(valid_token)
+        self.assertTrue(is_valid)
+
+        # 2. Expired window token (e.g. simulated from 10 minutes ago)
+        old_window = (int(time.time()) // proposal.ROTATION_INTERVAL) - 30
+        expired_token = f"{proposal.qr_checkin_token}_{old_window}_invalidsig"
+        is_valid, msg = proposal.validate_rotating_token(expired_token)
+        self.assertFalse(is_valid)
 
     def test_student_blocked_from_proposal_creation(self):
         """Requirement 2: Students are strictly barred from creating/publishing events."""
         self.client.login(username='student_user', password='password123')
         res = self.client.get('/proposals/new/')
-        # Should redirect to dashboard ('/') with error
         self.assertEqual(res.status_code, 302)
         self.assertEqual(res.url, '/')

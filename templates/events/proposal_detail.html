@@ -36,6 +36,12 @@
         </div>
 
         <div class="flex items-center space-x-2">
+            {% if is_proposer and proposal.status == 'APPROVED_PENDING_PUBLISH' %}
+                <a href="{% url 'publish_event' proposal.id %}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center">
+                    <i class="fa-solid fa-bullhorn mr-1.5"></i>Upload Poster & Publish
+                </a>
+            {% endif %}
+
             {% if is_proposer and proposal.status == 'REVISION_REQUESTED' %}
                 <a href="{% url 'edit_proposal' proposal.id %}" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs rounded-xl shadow-sm transition">
                     <i class="fa-solid fa-pen-to-square mr-1.5"></i>Edit & Resubmit
@@ -52,6 +58,26 @@
             {% endif %}
         </div>
     </div>
+
+    {% if proposal.status == 'APPROVED_PENDING_PUBLISH' %}
+        <!-- Faculty Poster & Publish Gate Callout -->
+        <div class="p-6 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border-2 border-emerald-400 rounded-3xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="space-y-1">
+                <div class="flex items-center space-x-2 text-emerald-900 font-black text-sm">
+                    <i class="fa-solid fa-shield-check text-emerald-600 text-lg"></i>
+                    <span>All Approval Stages Cleared by Director! Ready for Faculty Release</span>
+                </div>
+                <p class="text-xs text-slate-600">
+                    Hostel Mess, Fleet Transport, and Auditorium AV have been automatically notified. As the faculty coordinator, upload the event poster and click Publish to make this live on the student portal.
+                </p>
+            </div>
+            {% if is_proposer %}
+                <a href="{% url 'publish_event' proposal.id %}" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md whitespace-nowrap transition flex items-center">
+                    <i class="fa-solid fa-bullhorn mr-1.5"></i>Upload Poster & Publish Now &rarr;
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
 
     <!-- DYNAMIC MULTI-STAGE APPROVAL PIPELINE TRACKER -->
     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">

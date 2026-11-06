@@ -21,6 +21,18 @@
             </p>
         </div>
 
+        {% if expired %}
+            <div class="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl text-xs text-rose-800 text-left space-y-1 animate-pulse">
+                <div class="font-extrabold flex items-center">
+                    <i class="fa-solid fa-clock-rotate-left text-rose-600 mr-2 text-sm"></i>
+                    <span>Rotating QR Code Expired</span>
+                </div>
+                <p class="text-[11px] text-rose-700 leading-relaxed">
+                    This QR code was captured earlier and has expired. To eliminate proxy attendance, the projected QR rotates dynamically every 20 seconds. Please scan the current code displayed on the auditorium screen.
+                </p>
+            </div>
+        {% endif %}
+
         <form method="POST" id="checkinForm" class="space-y-4">
             {% csrf_token %}
             <input type="hidden" name="token" id="tokenInput" value="{{ token }}">
