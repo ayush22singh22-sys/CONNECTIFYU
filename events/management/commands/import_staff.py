@@ -113,3 +113,4 @@ class Command(BaseCommand):
         ))
         for err in errors:
             self.stdout.write(self.style.ERROR(f"  ERROR: {err}"))
+
