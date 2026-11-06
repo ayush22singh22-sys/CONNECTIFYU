@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CEMS - College Event Management System{% endblock %}</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+
+    <!-- Top Demo Identity Switcher Bar (Essential for Live Presentations) -->
+    <div class="bg-indigo-950 text-indigo-100 text-xs px-4 py-2 border-b border-indigo-900 flex flex-wrap items-center justify-between gap-2 shadow-inner">
+        <div class="flex items-center space-x-2 font-medium">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-slate-900 tracking-wide uppercase">
+                Demo Switcher
+            </span>
+            <span>Switch Role (Defaults Directly to Dashboard):</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+            {% for acct in demo_accounts %}
+                <a href="{% url 'switch_user' acct.username %}" 
+                   class="px-2 py-1 rounded transition-colors {% if request.user.username == acct.username %}bg-indigo-600 text-white font-bold ring-2 ring-indigo-300{% else %}bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200{% endif %}"
+                   title="{{ acct.name }} - {{ acct.label }}">
+                   {{ acct.label }}
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Main Navigation Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <!-- Logo & Brand -->
+                <div class="flex items-center space-x-3">
+                    <a href="{% url 'dashboard' %}" class="flex items-center space-x-3 group">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform">
+                            <i class="fa-solid fa-graduation-cap text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="text-lg font-bold tracking-tight text-slate-900 block leading-tight">CEMS India</span>
+                            <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">College Event Platform</span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Navigation Links -->
+                <nav class="hidden md:flex items-center space-x-1 lg:space-x-2">
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'dashboard' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:text-brand-600 hover:bg-slate-100 transition">
+                            <i class="fa-solid fa-table-columns mr-1.5 text-slate-400"></i>Dashboard
+                        </a>
+
+                        <a href="{% url 'student_events' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:text-brand-600 hover:bg-slate-100 transition">
+                            <i class="fa-solid fa-calendar-check mr-1.5 text-slate-400"></i>Campus Events
+                        </a>
+
+                        {% if user.profile.role == 'STUDENT' %}
+                            <a href="{% url 'my_registrations' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:text-brand-600 hover:bg-slate-100 transition">
+                                <i class="fa-solid fa-ticket mr-1.5 text-slate-400"></i>My Registrations
+                            </a>
+                            <a href="{% url 'checkin' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition">
+                                <i class="fa-solid fa-qrcode mr-1.5"></i>QR & Selfie Check-In
+                            </a>
+                        {% endif %}
+
+                        {% if user.profile.role != 'STUDENT' %}
+                            <a href="{% url 'create_proposal' %}" class="px-3 py-2 rounded-lg text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 transition">
+                                <i class="fa-solid fa-plus-circle mr-1.5"></i>Propose Event
+                            </a>
+                        {% endif %}
+
+                        {% if pending_approvals_count > 0 and user.profile.role != 'STUDENT' %}
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                                <i class="fa-solid fa-clock mr-1"></i>{{ pending_approvals_count }} Awaiting Review
+                            </span>
+                        {% endif %}
+                    {% endif %}
+                </nav>
+
+                <!-- User Profile & Auth Actions -->
+                <div class="flex items-center space-x-3">
+                    {% if user.is_authenticated %}
+                        <div class="flex items-center space-x-3 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200">
+                            <div class="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-xs uppercase shadow-inner">
+                                {{ user.first_name|default:user.username|slice:":1" }}
+                            </div>
+                            <div class="text-left hidden sm:block">
+                                <div class="text-xs font-bold text-slate-800 leading-tight">
+                                    {{ user.get_full_name|default:user.username }}
+                                </div>
+                                <div class="text-[10px] font-semibold text-brand-600 uppercase tracking-wider">
+                                    {{ user.profile.get_role_display|default:'User' }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <a href="{% url 'logout' %}" class="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Log out">
+                            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                        </a>
+                    {% else %}
+                        <a href="{% url 'login' %}" class="text-sm font-semibold text-slate-700 hover:text-brand-600 px-3 py-2">Log in</a>
+                        <a href="{% url 'register' %}" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg shadow-sm shadow-brand-500/20">Sign up</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Global Toast / Message Alerts -->
+    {% if messages %}
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+            {% for message in messages %}
+                <div class="p-4 mb-3 rounded-xl border flex items-center justify-between gap-3 shadow-sm
+                    {% if message.tags == 'error' %}bg-rose-50 border-rose-200 text-rose-800
+                    {% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800
+                    {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+                    {% else %}bg-indigo-50 border-indigo-200 text-indigo-800{% endif %}">
+                    <div class="flex items-center space-x-3 text-sm font-medium">
+                        {% if message.tags == 'error' %}<i class="fa-solid fa-circle-exclamation text-rose-500 text-lg"></i>
+                        {% elif message.tags == 'warning' %}<i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg"></i>
+                        {% elif message.tags == 'success' %}<i class="fa-solid fa-circle-check text-emerald-500 text-lg"></i>
+                        {% else %}<i class="fa-solid fa-circle-info text-indigo-500 text-lg"></i>{% endif %}
+                        <span>{{ message }}</span>
+                    </div>
+                    <button type="button" onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 text-sm">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 text-slate-500 text-xs py-6 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-shield-halved text-brand-600"></i>
+                <span class="font-semibold text-slate-700">College Event Management System (CEMS)</span>
+                <span>&bull; Indian Higher Education Framework</span>
+            </div>
+            <div>
+                Mandatory Approval Chain: Dean (Finance) &rarr; Dean (Academics) &rarr; Director
+            </div>
+        </div>
+    </footer>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,260 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ proposal.title }} - Event Details{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Top Breadcrumb & Back -->
+    <div class="flex items-center justify-between text-xs text-slate-500">
+        <div class="flex items-center space-x-2">
+            <a href="{% url 'student_events' %}" class="hover:text-brand-600 font-medium flex items-center">
+                <i class="fa-solid fa-arrow-left mr-1.5"></i> Back to All Events
+            </a>
+            <span>/</span>
+            <span class="text-slate-800 font-semibold truncate max-w-sm">{{ proposal.title }}</span>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+            <i class="fa-solid fa-circle-check mr-1"></i>Official Campus Event
+        </span>
+    </div>
+
+    <!-- Main Hero Card -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-brand-900 via-indigo-900 to-slate-900 p-8 text-white">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-white/10 text-indigo-200 backdrop-blur border border-white/15">
+                    {{ proposal.organizing_unit.name }}
+                </span>
+                <span class="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    {{ proposal.get_status_display }}
+                </span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-white leading-tight mb-4">
+                {{ proposal.title }}
+            </h1>
+            <p class="text-sm text-indigo-100 max-w-3xl leading-relaxed">
+                {{ proposal.description }}
+            </p>
+        </div>
+
+        <!-- Quick Info Ribbon -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 border-b border-slate-200 bg-slate-50/70 text-xs">
+            <div class="p-4 flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    <i class="fa-solid fa-calendar"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Start Date & Time</div>
+                    <div class="font-bold text-slate-800">{{ proposal.start_date|date:"D, d M Y" }}</div>
+                    <div class="text-slate-500">{{ proposal.start_date|date:"h:i A" }}</div>
+                </div>
+            </div>
+
+            <div class="p-4 flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">End Date & Time</div>
+                    <div class="font-bold text-slate-800">{{ proposal.end_date|date:"D, d M Y" }}</div>
+                    <div class="text-slate-500">{{ proposal.end_date|date:"h:i A" }}</div>
+                </div>
+            </div>
+
+            <div class="p-4 flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    <i class="fa-solid fa-location-dot"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Campus Venue</div>
+                    <div class="font-bold text-slate-800 truncate max-w-[160px]">{{ proposal.venue }}</div>
+                    <div class="text-slate-500">{{ proposal.expected_attendees }} Max Capacity</div>
+                </div>
+            </div>
+
+            <div class="p-4 flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                    <i class="fa-solid fa-microphone"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Keynote Speaker</div>
+                    <div class="font-bold text-slate-800 truncate max-w-[160px]">{{ proposal.guest_speaker|default:"Faculty Panel" }}</div>
+                    <div class="text-slate-500 truncate">Special Guest</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2-Column Grid: Details vs Registration Card -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left Column: Comprehensive Specifications -->
+        <div class="lg:col-span-2 space-y-6">
+
+            <!-- Organizing & Faculty Info -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2">
+                    Event Coordinators & Host Unit
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
+                        <span class="text-slate-400 block mb-0.5">Faculty Proposer:</span>
+                        <span class="font-bold text-slate-800">{{ proposal.proposer.get_full_name|default:proposal.proposer.username }}</span>
+                        <span class="text-slate-500 block">{{ proposal.proposer.email }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block mb-0.5">Student Co-Coordinator:</span>
+                        <span class="font-bold text-slate-800">{{ proposal.co_coordinator|default:"Campus Student Affairs" }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block mb-0.5">Organizing Unit:</span>
+                        <span class="font-bold text-slate-800">{{ proposal.organizing_unit.name }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block mb-0.5">Approval Reference:</span>
+                        <span class="font-bold text-brand-700">#PROP-{{ proposal.id }} ({{ proposal.chain_type }})</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance & Anti-Proxy Notice -->
+            <div class="bg-indigo-50/70 p-6 rounded-2xl border border-indigo-200 shadow-sm space-y-3">
+                <div class="flex items-center space-x-2 text-indigo-900 font-bold text-sm">
+                    <i class="fa-solid fa-shield-halved text-brand-600"></i>
+                    <span>Anti-Proxy Attendance & Feedback Guidelines</span>
+                </div>
+                <p class="text-xs text-indigo-950 leading-relaxed">
+                    1. <strong>Projected QR Scan:</strong> Attendance requires scanning the live QR code on the auditorium screen using your mobile device.
+                </p>
+                <p class="text-xs text-indigo-950 leading-relaxed">
+                    2. <strong>Front-Camera Live Selfie:</strong> You must allow camera access to take an anti-proxy selfie during check-in.
+                </p>
+                <p class="text-xs text-indigo-950 leading-relaxed">
+                    3. <strong>Mandatory Feedback Gate:</strong> Your status will remain <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">CHECKED_IN</span> until you complete the 3-category event feedback survey, after which it officially updates to <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold">VERIFIED</span>.
+                </p>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Interactive Registration Widget -->
+        <div class="space-y-6">
+
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h3 class="font-bold text-slate-900 text-sm">
+                        Registration Desk
+                    </h3>
+                    {% if is_registered %}
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider
+                            {% if registration.status == 'VERIFIED' %}bg-emerald-100 text-emerald-800 border border-emerald-300
+                            {% elif registration.status == 'CHECKED_IN' %}bg-amber-100 text-amber-800 border border-amber-300
+                            {% else %}bg-indigo-100 text-indigo-800 border border-indigo-200{% endif %}">
+                            {{ registration.get_status_display }}
+                        </span>
+                    {% endif %}
+                </div>
+
+                {% if is_staff_user %}
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-2">
+                        <div class="font-bold text-slate-800 flex items-center">
+                            <i class="fa-solid fa-user-tie text-brand-600 mr-1.5"></i> Staff Coordinator View
+                        </div>
+                        <p>You are logged in with staff/faculty privileges. Student registration is for attendees only.</p>
+                        <a href="{% url 'live_event' proposal.id %}" class="inline-block mt-2 font-bold text-brand-600 hover:text-brand-700">
+                            Launch Projector Live QR Screen &rarr;
+                        </a>
+                    </div>
+                {% elif is_registered %}
+                    <!-- Already Registered View -->
+                    <div class="space-y-4">
+                        <div class="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 text-xs text-emerald-900 space-y-1.5">
+                            <div class="font-bold flex items-center text-sm">
+                                <i class="fa-solid fa-circle-check text-emerald-600 mr-1.5"></i> You Are Registered!
+                            </div>
+                            <div>Role: <strong>{{ registration.get_role_display }}</strong></div>
+                            <div>Registered on: {{ registration.registered_at|date:"d M Y, h:i A" }}</div>
+                            {% if registration.checked_in_at %}
+                                <div>Checked In: {{ registration.checked_in_at|date:"d M Y, h:i A" }}</div>
+                            {% endif %}
+                        </div>
+
+                        {% if registration.status == 'CHECKED_IN' %}
+                            <a href="{% url 'event_feedback' registration.id %}" class="block w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl text-center shadow-md transition">
+                                <i class="fa-solid fa-star mr-1"></i> Complete Mandatory Feedback
+                            </a>
+                        {% endif %}
+
+                        <!-- Change Role Option -->
+                        {% if registration.status == 'REGISTERED' %}
+                            <form method="POST" action="{% url 'event_register' proposal.id %}" class="space-y-3 pt-2 border-t border-slate-100">
+                                {% csrf_token %}
+                                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                    Change Registration Role
+                                </label>
+                                <select name="role" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                                    {% for val, label in role_choices %}
+                                        <option value="{{ val }}" {% if registration.role == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition">
+                                    Update Role
+                                </button>
+                            </form>
+
+                            <!-- Cancel Registration -->
+                            <form method="POST" action="{% url 'cancel_registration' proposal.id %}" onsubmit="return confirm('Are you sure you want to cancel your registration for this event?');">
+                                {% csrf_token %}
+                                <button type="submit" class="w-full py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 text-xs font-semibold rounded-xl border border-rose-200 transition">
+                                    Cancel Registration
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <!-- New Registration Form -->
+                    <form method="POST" action="{% url 'event_register' proposal.id %}" class="space-y-4">
+                        {% csrf_token %}
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                Choose Your Participation Role:
+                            </label>
+                            <div class="space-y-2">
+                                <label class="flex items-center p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition text-xs">
+                                    <input type="radio" name="role" value="PARTICIPANT" checked class="text-brand-600 focus:ring-brand-500 mr-2.5">
+                                    <div>
+                                        <div class="font-bold text-slate-800">Student Participant</div>
+                                        <div class="text-[11px] text-slate-500">Participate in workshops, contests, and talks</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition text-xs">
+                                    <input type="radio" name="role" value="VOLUNTEER" class="text-brand-600 focus:ring-brand-500 mr-2.5">
+                                    <div>
+                                        <div class="font-bold text-slate-800">Student Volunteer</div>
+                                        <div class="text-[11px] text-slate-500">Assist organizers with logistics and check-in</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition text-xs">
+                                    <input type="radio" name="role" value="VIEWER" class="text-brand-600 focus:ring-brand-500 mr-2.5">
+                                    <div>
+                                        <div class="font-bold text-slate-800">Audience / Viewer</div>
+                                        <div class="text-[11px] text-slate-500">Attend keynote presentations and ceremonies</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md shadow-brand-500/25 transition">
+                            <i class="fa-solid fa-ticket mr-1.5"></i> Confirm Registration
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
