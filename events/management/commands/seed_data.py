@@ -4,46 +4,73 @@ from django.utils import timezone
 from datetime import timedelta
 from events.models import (
     UserProfile, OrganizingUnit, EventProposal, ApprovalLog, EventRegistration,
-    EventFeedback, RollWhitelist, StudentProfile, StaffProfile,
+    EventFeedback, LogisticsNotification, RollWhitelist, StudentProfile, StaffProfile,
 )
 from events.utils import get_default_chain, dispatch_logistics_notifications
 
 
 class Command(BaseCommand):
-    help = 'Seeds authentic Indian college users, departments, clubs, and event proposals with 3 approval chains'
+    help = 'Wipes old data and re-seeds an authentic pre-provisioned database of Indian college entities, students, HODs, and events'
 
     def handle(self, *args, **kwargs):
-        self.stdout.write("Seeding Indian College Event Management System (CEMS) data...")
+        self.stdout.write("Wiping previous test records and provisioning clean database...")
 
-        # 1. Create Indian Personas
-        users_meta = [
-            ('faculty', 'Rajesh', 'Sharma', 'rsharma@college.ac.in', 'FACULTY', 'Computer Science & Engineering', 'FAC-CSE-104'),
-            ('hod_cse', 'K. V.', 'Ramanathan', 'hod.cse@college.ac.in', 'HOD', 'Computer Science & Engineering', 'HOD-CSE-001'),
-            ('club_lead', 'Priya', 'Nair', 'robotics.lead@college.ac.in', 'CLUB_HEAD', 'Robotics & Automation Society', 'FAC-ADV-022'),
-            ('registrar', 'Sunita', 'Deshmukh', 'registrar@college.ac.in', 'REGISTRAR', 'Administration & HR Section', 'REG-ADM-001'),
-            ('dean_research', 'P.', 'Venkatraman', 'dean.rnd@college.ac.in', 'DEAN_RESEARCH', 'Research & Consultancy (R&D)', 'DEAN-RND-01'),
-            ('dean_dsw', 'Alok', 'Sen', 'dean.dsw@college.ac.in', 'DEAN_STUDENT_WELFARE', 'Dean of Student Welfare (DSW)', 'DEAN-DSW-01'),
-            ('dean_finance', 'Suresh', 'Chandra', 'dean.finance@college.ac.in', 'DEAN_ACCOUNTS', 'Finance & Accounts Office', 'DEAN-FIN-01'),
-            ('dean_academics', 'Meenakshi', 'Sundaram', 'dean.acad@college.ac.in', 'DEAN_ACADEMICS', 'Academic Affairs Office', 'DEAN-ACAD-01'),
-            ('director', 'R.', 'Chidambaram', 'director@college.ac.in', 'DIRECTOR', 'Directorate of the Institute', 'DIR-INST-01'),
-            ('student1', 'Aarav', 'Patel', 'aarav.21bcse@student.college.ac.in', 'STUDENT', 'Computer Science & Engineering', '21BCSE101'),
-            ('student2', 'Ananya', 'Sen', 'ananya.21bece@student.college.ac.in', 'STUDENT', 'Electronics & Communication', '21BECE034'),
-            ('admin', 'Central', 'Administrator', 'admin@college.ac.in', 'DIRECTOR', 'Campus IT Centre', 'ADMIN-ROOT-01'),
+        # 1. Clean slate for registrations and feedback
+        EventFeedback.objects.all().delete()
+        EventRegistration.objects.all().delete()
+        LogisticsNotification.objects.all().delete()
+        ApprovalLog.objects.all().delete()
+        EventProposal.objects.all().delete()
+
+        # 2. Provision Official College Database of Entities
+        users_directory = [
+            # Superadmin
+            ('admin', 'Super', 'Administrator', 'admin@college.ac.in', 'DIRECTOR', 'Campus IT Centre & Directorate', 'ADMIN-ROOT-001', True),
+
+            # Faculty Coordinators
+            ('faculty', 'Rajesh', 'Sharma', 'rsharma@college.ac.in', 'FACULTY', 'Department of Computer Science & Engineering', 'FAC-CSE-104', False),
+            ('faculty_ece', 'Arvind', 'Swaminathan', 'aswami@college.ac.in', 'FACULTY', 'Department of Electronics & Communication Engineering', 'FAC-ECE-108', False),
+
+            # HODs of Different Departments
+            ('hod_cse', 'K. V.', 'Ramanathan', 'hod.cse@college.ac.in', 'HOD', 'Department of Computer Science & Engineering', 'HOD-CSE-001', False),
+            ('hod_ece', 'Sunita', 'Kulkarni', 'hod.ece@college.ac.in', 'HOD', 'Department of Electronics & Communication Engineering', 'HOD-ECE-002', False),
+            ('hod_mech', 'Vikramaditya', 'Rathore', 'hod.mech@college.ac.in', 'HOD', 'Department of Mechanical Engineering', 'HOD-MECH-003', False),
+
+            # Club Faculty Advisors
+            ('club_lead', 'Priya', 'Nair', 'robotics.lead@college.ac.in', 'CLUB_HEAD', 'Robotics & Automation Society (RAS)', 'FAC-ADV-022', False),
+            ('club_cultural', 'Amit', 'Trivedi', 'cultural.lead@college.ac.in', 'CLUB_HEAD', 'Cultural Affairs Committee (Rangmanch)', 'FAC-ADV-045', False),
+
+            # Statutory Administration & Deans
+            ('registrar', 'Sunita', 'Deshmukh', 'registrar@college.ac.in', 'REGISTRAR', 'Administration & HR Establishment Section', 'REG-ADM-001', False),
+            ('dean_research', 'P.', 'Venkatraman', 'dean.rnd@college.ac.in', 'DEAN_RESEARCH', 'Office of Dean (Research & Consultancy - R&D)', 'DEAN-RND-01', False),
+            ('dean_dsw', 'Alok', 'Sen', 'dean.dsw@college.ac.in', 'DEAN_STUDENT_WELFARE', 'Office of Dean (Student Welfare - DSW)', 'DEAN-DSW-01', False),
+            ('dean_finance', 'Suresh', 'Chandra', 'dean.finance@college.ac.in', 'DEAN_ACCOUNTS', 'Office of Dean (Finance & Accounts)', 'DEAN-FIN-01', False),
+            ('dean_academics', 'Meenakshi', 'Sundaram', 'dean.acad@college.ac.in', 'DEAN_ACADEMICS', 'Office of Dean (Academic Affairs)', 'DEAN-ACAD-01', False),
+            ('director', 'R.', 'Chidambaram', 'director@college.ac.in', 'DIRECTOR', 'Directorate of the Institute', 'DIR-INST-01', False),
+
+            # Pre-provisioned Student Database (No public sign-up allowed!)
+            ('student1', 'Aarav', 'Patel', 'aarav.21bcse@student.college.ac.in', 'STUDENT', 'Department of Computer Science & Engineering', '21BCSE101', False),
+            ('student2', 'Ananya', 'Sen', 'ananya.21bece@student.college.ac.in', 'STUDENT', 'Department of Electronics & Communication Engineering', '21BECE034', False),
+            ('student3', 'Rohan', 'Gupta', 'rohan.22bmee@student.college.ac.in', 'STUDENT', 'Department of Mechanical Engineering', '22BMEE012', False),
+            ('student4', 'Sneha', 'Reddy', 'sneha.20bcse@student.college.ac.in', 'STUDENT', 'Department of Computer Science & Engineering', '20BCSE088', False),
+            ('student5', 'Aditya', 'Verma', 'aditya.22bece@student.college.ac.in', 'STUDENT', 'Department of Electronics & Communication Engineering', '22BECE055', False),
         ]
 
         created_users = {}
-        for username, first, last, email, role, dept, roll_or_emp in users_meta:
+        for username, first, last, email, role, dept, roll_or_emp, is_admin in users_directory:
             user, _ = User.objects.get_or_create(username=username, defaults={
                 'first_name': first,
                 'last_name': last,
                 'email': email,
-                'is_staff': True if role != 'STUDENT' else False,
-                'is_superuser': True if username == 'admin' else False,
+                'is_staff': True if (role != 'STUDENT' or is_admin) else False,
+                'is_superuser': is_admin,
             })
             user.set_password('password123')
             user.first_name = first
             user.last_name = last
             user.email = email
+            user.is_staff = True if (role != 'STUDENT' or is_admin) else False
+            user.is_superuser = is_admin
             user.save()
 
             profile, _ = UserProfile.objects.get_or_create(user=user)
@@ -85,7 +112,7 @@ class Command(BaseCommand):
                 defaults={'name': name, 'department': dept, 'year': year, 'is_used': False}
             )
 
-        # 2. Organizing Units
+        # 3. Organizing Units mapped to specific HODs
         cse_dept, _ = OrganizingUnit.objects.get_or_create(
             name='Department of Computer Science & Engineering',
             defaults={'unit_type': 'DEPARTMENT', 'head': created_users['hod_cse']}
@@ -95,8 +122,17 @@ class Command(BaseCommand):
 
         ece_dept, _ = OrganizingUnit.objects.get_or_create(
             name='Department of Electronics & Communication Engineering',
-            defaults={'unit_type': 'DEPARTMENT', 'head': created_users['hod_cse']}
+            defaults={'unit_type': 'DEPARTMENT', 'head': created_users['hod_ece']}
         )
+        ece_dept.head = created_users['hod_ece']
+        ece_dept.save()
+
+        mech_dept, _ = OrganizingUnit.objects.get_or_create(
+            name='Department of Mechanical Engineering',
+            defaults={'unit_type': 'DEPARTMENT', 'head': created_users['hod_mech']}
+        )
+        mech_dept.head = created_users['hod_mech']
+        mech_dept.save()
 
         robotics_soc, _ = OrganizingUnit.objects.get_or_create(
             name='Robotics & Automation Society (RAS)',
@@ -105,165 +141,136 @@ class Command(BaseCommand):
         robotics_soc.head = created_users['club_lead']
         robotics_soc.save()
 
-        inst_council, _ = OrganizingUnit.objects.get_or_create(
-            name='Central Institutional Affairs Committee',
-            defaults={'unit_type': 'INSTITUTE', 'head': created_users['registrar']}
-        )
-
         now = timezone.now()
 
-        # 3. Create Event Proposals demonstrating the 3 distinct approval chains
+        # 4. Create Sample Event Proposals demonstrating new features:
 
-        # --- EVENT 1: Academic & Research Chain ---
-        # Currently at Stage 3: Dean of Finance (₹)
-        chain1 = get_default_chain('ACADEMIC')
-        chain1[0]['status'] = 'APPROVED'
-        chain1[1]['status'] = 'APPROVED'
-        chain1[2]['status'] = 'PENDING'
-
-        event1, _ = EventProposal.objects.get_or_create(
-            title='National Conference on Generative AI & Autonomous Robotics (NCGAR-2026)',
-            defaults={
-                'description': 'A 3-day flagship national conference featuring top researchers, paper presentations, and research workshops on foundation models and robotics.',
-                'proposer': created_users['faculty'],
-                'co_coordinator': 'Dr. S. Radhakrishnan (CSE Dept, Intercom: 4120)',
-                'guest_speaker': 'Prof. V. Kamakoti (Director, IIT Madras) & Dr. Geetha Manjunath (Niramai AI)',
-                'organizing_unit': cse_dept,
-                'chain_type': 'ACADEMIC',
-                'approval_chain': chain1,
-                'current_stage_index': 2, # Stage 3: Dean Finance
-                'requested_budget': 350000.00,
-                'approved_budget': 350000.00,
-                'start_date': now + timedelta(days=18),
-                'end_date': now + timedelta(days=20),
-                'venue': 'Dr. APJ Abdul Kalam Central Auditorium & CSE Complex',
-                'expected_attendees': 350,
-                'mess_requirements': 'High tea and working lunch for 350 delegates and 25 keynote speakers for 3 days. Special dinner on Day 1.',
-                'transport_requirements': '2 Innova Crysta vehicles for airport reception and drop of guest speakers from Bangalore/Chennai airport.',
-                'maintenance_requirements': 'Dual high-lumen 4K projectors, collar microphones, podium mic, and uninterrupted power backup (UPS) across all seminar halls.',
-                'status': 'UNDER_REVIEW',
-                'revision_count': 0,
-                'is_revision': False,
-            }
-        )
-        ApprovalLog.objects.filter(proposal=event1).delete()
-        ApprovalLog.objects.create(
-            proposal=event1,
-            approver=created_users['hod_cse'],
-            stage_name='Stage 1: Head of Department (HOD CSE)',
-            action='APPROVED',
-            remarks='Proposal aligns with NBA/NIRF research benchmarks. Strongly recommended for sanction.',
-            created_at=now - timedelta(days=4)
-        )
-        ApprovalLog.objects.create(
-            proposal=event1,
-            approver=created_users['dean_research'],
-            stage_name='Stage 2: Dean of Research & Consultancy (R&D)',
-            action='APPROVED',
-            remarks='Keynote profiles and call-for-papers review committee vetted. Approved.',
-            created_at=now - timedelta(days=2)
-        )
-
-        # --- EVENT 2: Student Club & Cultural Fest Chain ---
-        # Fully Approved & Published! (Shows live QR, student selfie, feedback, and compliance report)
-        chain2 = get_default_chain('CLUB_FEST')
-        for stage in chain2:
+        # --- EVENT A: Approved by Director, held in APPROVED_PENDING_PUBLISH ---
+        # Demonstrates Requirement 3: Faculty coordinator has poster upload & publish button!
+        chain_pending = get_default_chain('ACADEMIC')
+        for stage in chain_pending:
             stage['status'] = 'APPROVED'
 
-        event2, _ = EventProposal.objects.get_or_create(
-            title='TechKriti 2026: All-India Inter-College Hackathon & Robotics Derby',
-            defaults={
-                'description': 'A 36-hour hackathon, bot combat, and line-follower challenge bringing over 500 engineering students across India.',
-                'proposer': created_users['faculty'],
-                'co_coordinator': 'Prof. Priya Nair & Student Council',
-                'guest_speaker': 'Dr. Tessy Thomas (Distinguished Scientist & Missile Woman of India)',
-                'organizing_unit': robotics_soc,
-                'chain_type': 'CLUB_FEST',
-                'approval_chain': chain2,
-                'current_stage_index': 5, # Cleared all 5 stages!
-                'requested_budget': 250000.00,
-                'approved_budget': 220000.00,
-                'budget_revision_reason': 'Sanctioned ₹2,20,000 after adjusting non-essential decoration overheads as per student activity funding guidelines.',
-                'start_date': now + timedelta(days=4),
-                'end_date': now + timedelta(days=6),
-                'venue': 'Visvesvaraya Central Seminar Complex & Indoor Sports Stadium',
-                'expected_attendees': 500,
-                'mess_requirements': 'Midnight snacks, energy drinks, tea/coffee counters, and lunch for 500 participants over 36 continuous hours.',
-                'transport_requirements': 'Institute shuttle buses between railway station and campus every 2 hours on Friday evening.',
-                'maintenance_requirements': 'High-speed gigabit Wi-Fi nodes, 150 power extension strips, sound system, and stadium floodlights.',
-                'status': 'APPROVED',
-                'revision_count': 1,
-                'is_revision': True,
-            }
+        event_pending_pub = EventProposal.objects.create(
+            title='National Conference on Generative AI & Autonomous Systems (NCGAIS-2026)',
+            description='A 3-day flagship national research conference with paper presentations, IEEE workshops, and technical keynotes.',
+            proposer=created_users['faculty'],
+            organizing_unit=cse_dept,
+            co_coordinator='Dr. S. Radhakrishnan (CSE Dept, Intercom 4120)',
+            guest_speaker='Prof. V. Kamakoti (Director, IIT Madras) & Dr. Geetha Manjunath (Niramai AI)',
+            chain_type='ACADEMIC',
+            approval_chain=chain_pending,
+            current_stage_index=5,
+            requested_budget=350000.00,
+            approved_budget=320000.00,
+            budget_revision_reason='Approved ₹3,20,000 as per hospitality guidelines by Dean Finance.',
+            start_date=now + timedelta(days=14),
+            end_date=now + timedelta(days=16),
+            venue='Dr. APJ Abdul Kalam Central Auditorium',
+            expected_attendees=350,
+            mess_requirements='High tea and working lunch for 350 delegates and 20 dignitaries.',
+            transport_requirements='2 VIP Innova vehicles for airport reception and drop.',
+            maintenance_requirements='Dual 4K laser projectors, collar microphones, and continuous UPS power backup.',
+            status='APPROVED_PENDING_PUBLISH', # Held for faculty upload & publish!
+            revision_count=0,
+            is_revision=False,
         )
-        dispatch_logistics_notifications(event2)
+        dispatch_logistics_notifications(event_pending_pub)
 
-        # Pre-seed registrations for student1 and student2
-        reg1, _ = EventRegistration.objects.get_or_create(
-            event=event2,
-            student=created_users['student1'],
-            defaults={'role': 'PARTICIPANT', 'status': 'REGISTERED'}
-        )
-
-        reg2, _ = EventRegistration.objects.get_or_create(
-            event=event2,
-            student=created_users['student2'],
-            defaults={
-                'role': 'VOLUNTEER',
-                'status': 'VERIFIED',
-                'checked_in_at': now - timedelta(hours=3),
-                'selfie_image': 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23059669"/><text x="50" y="55" font-size="11" fill="white" text-anchor="middle">Selfie OK</text></svg>'
-            }
-        )
-        EventFeedback.objects.get_or_create(
-            registration=reg2,
-            defaults={
-                'rating_overall': 5,
-                'rating_content': 5,
-                'rating_speaker': 5,
-                'comments': 'Incredible organization and problem statements! The mentors were extremely helpful throughout the 36-hour sprint.'
-            }
-        )
-
-        # --- EVENT 3: Institute Mega Event Chain ---
-        # Currently in Revision Requested status (shows clear remarks & allows resubmission)
-        chain3 = get_default_chain('INSTITUTE_MEGA')
-        chain3[0]['status'] = 'APPROVED'
-        chain3[1]['status'] = 'REVISION_REQUESTED'
-
-        event3, _ = EventProposal.objects.get_or_create(
-            title='Annual Institute Convocation & Industry-Academia Conclave 2026',
-            defaults={
-                'description': 'Annual formal degree conferment ceremony and convocation address, followed by industry partnership MOUs.',
-                'proposer': created_users['faculty'],
-                'co_coordinator': 'Dr. S. K. Gupta (Intercom: 1002)',
-                'guest_speaker': 'Shri N. R. Narayana Murthy (Founder, Infosys)',
-                'organizing_unit': inst_council,
-                'chain_type': 'INSTITUTE_MEGA',
-                'approval_chain': chain3,
-                'current_stage_index': 1,
-                'requested_budget': 600000.00,
-                'approved_budget': 600000.00,
-                'start_date': now + timedelta(days=25),
-                'end_date': now + timedelta(days=26),
-                'venue': 'Open Air Amphitheatre & Sir C. V. Raman Auditorium',
-                'expected_attendees': 1200,
-                'mess_requirements': 'VIP luncheon for 50 dignitaries and buffet lunch for 1200 graduating students and parents.',
-                'transport_requirements': 'Fleet escort vehicles from state guest house to campus.',
-                'maintenance_requirements': 'Full ceremonial stage decoration, memento stalls, live YouTube stream broadcast setup.',
-                'status': 'REVISION_REQUESTED',
-                'revision_count': 1,
-                'is_revision': True,
-            }
-        )
-        ApprovalLog.objects.filter(proposal=event3).delete()
         ApprovalLog.objects.create(
-            proposal=event3,
-            approver=created_users['dean_research'],
-            stage_name='Stage 2: Dean of Research & Planning',
-            action='REVISION_REQUESTED',
-            remarks='Security and protocol clearance required: Please provide an exact VIP seating blueprint and security liaison officer details before this can move to Finance.',
-            created_at=now - timedelta(hours=8)
+            proposal=event_pending_pub,
+            approver=created_users['director'],
+            stage_name='Stage 5: Director of the Institute',
+            action='APPROVED',
+            remarks='Final executive clearance granted. Forwarded to Faculty Coordinator for poster upload & campus publishing.',
+            created_at=now - timedelta(hours=2)
         )
 
-        self.stdout.write(self.style.SUCCESS("Database seeded successfully with authentic Indian personas, Rupee (INR) budgets, and 3 distinct approval chains!"))
+        # --- EVENT B: Officially PUBLISHED (Ready for Rotating QR & Live Check-In) ---
+        # Demonstrates Requirement 4: Rotating QR Code Screen!
+        chain_published = get_default_chain('CLUB_FEST')
+        for stage in chain_published:
+            stage['status'] = 'APPROVED'
+
+        event_published = EventProposal.objects.create(
+            title='TechKriti 2026: All-India Inter-College Hackathon & Robotics Derby',
+            description='A 36-hour non-stop hackathon and robotics arena combat for 500 engineering students across India.',
+            proposer=created_users['faculty'],
+            organizing_unit=robotics_soc,
+            co_coordinator='Prof. Priya Nair & Robotics Council',
+            guest_speaker='Dr. Tessy Thomas (Distinguished Scientist & Missile Woman of India)',
+            chain_type='CLUB_FEST',
+            approval_chain=chain_published,
+            current_stage_index=5,
+            requested_budget=250000.00,
+            approved_budget=220000.00,
+            budget_revision_reason='Sanctioned ₹2,20,000 after adjusting stage decoration overheads.',
+            start_date=now + timedelta(days=3),
+            end_date=now + timedelta(days=5),
+            venue='Visvesvaraya Central Seminar Complex & Indoor Sports Stadium',
+            expected_attendees=500,
+            poster_data_uri='https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=80',
+            mess_requirements='Continuous snacks, energy drinks, tea/coffee counters, and lunch for 500 students.',
+            transport_requirements='Campus shuttle buses between railway station and institute every 2 hours.',
+            maintenance_requirements='Gigabit Wi-Fi nodes, 150 power extension cables, sound system, and floodlights.',
+            status='APPROVED',
+            published_at=now - timedelta(days=1),
+            revision_count=1,
+            is_revision=True,
+        )
+        dispatch_logistics_notifications(event_published)
+
+        # Pre-seed registrations for demonstration
+        EventRegistration.objects.create(
+            event=event_published,
+            student=created_users['student1'],
+            role='PARTICIPANT',
+            status='REGISTERED'
+        )
+        reg2 = EventRegistration.objects.create(
+            event=event_published,
+            student=created_users['student2'],
+            role='VOLUNTEER',
+            status='VERIFIED',
+            checked_in_at=now - timedelta(hours=1),
+            selfie_image='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23059669"/><text x="50" y="55" font-size="11" fill="white" text-anchor="middle">Selfie OK</text></svg>'
+        )
+        EventFeedback.objects.create(
+            registration=reg2,
+            rating_overall=5,
+            rating_content=5,
+            rating_speaker=5,
+            comments='Outstanding hackathon organization, mentors were available round the clock!'
+        )
+
+        # --- EVENT C: Under Review at Stage 3 (Dean Finance) ---
+        chain_under_review = get_default_chain('ACADEMIC')
+        chain_under_review[0]['status'] = 'APPROVED'
+        chain_under_review[1]['status'] = 'APPROVED'
+        chain_under_review[2]['status'] = 'PENDING'
+
+        EventProposal.objects.create(
+            title='National Faculty Development Programme on VLSI & Chip Design 2026',
+            description='One-week intensive training for faculty and researchers on open-source EDA tools and RISC-V architectures.',
+            proposer=created_users['faculty_ece'],
+            organizing_unit=ece_dept,
+            co_coordinator='Dr. Sunita Kulkarni (HOD ECE)',
+            guest_speaker='Dr. Satya Gupta (President, VLSI Society of India)',
+            chain_type='ACADEMIC',
+            approval_chain=chain_under_review,
+            current_stage_index=2, # Awaiting Dean Finance!
+            requested_budget=180000.00,
+            approved_budget=180000.00,
+            start_date=now + timedelta(days=22),
+            end_date=now + timedelta(days=27),
+            venue='Sir C. V. Raman Computing Hall & ECE Labs',
+            expected_attendees=80,
+            mess_requirements='Morning high tea, working lunch, and evening snacks for 80 faculty participants.',
+            transport_requirements='Pickup for visiting expert from city guest house.',
+            maintenance_requirements='80 high-performance Linux workstations configured with RISC-V tools.',
+            status='UNDER_REVIEW',
+            revision_count=0,
+            is_revision=False,
+        )
+
+        self.stdout.write(self.style.SUCCESS("Database seeded successfully with pre-provisioned Indian college entities, distinct HODs, pending publish gate, and rotating QR!"))

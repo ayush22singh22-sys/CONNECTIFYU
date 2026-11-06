@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Event Poster & Publish - {{ proposal.title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto py-6">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
+        
+        <!-- Header Banner -->
+        <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 p-8 text-white">
+            <div class="inline-flex items-center space-x-2 bg-white/20 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm mb-3">
+                <i class="fa-solid fa-circle-check text-emerald-300"></i>
+                <span>Director Clearance Granted</span>
+                <span>&bull; Ready for Public Release</span>
+            </div>
+            <h1 class="text-2xl font-black tracking-tight">Final Step: Publish Event to Campus</h1>
+            <p class="text-xs text-emerald-100 mt-1 max-w-lg">
+                Your proposal has cleared all administrative & financial approval stages. Upload an official event banner/poster and click Publish to release this event to students for registration.
+            </p>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data" class="p-8 space-y-6">
+            {% csrf_token %}
+
+            <!-- Event Summary Box -->
+            <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500 font-semibold uppercase text-[10px]">Event Title</span>
+                    <span class="font-bold text-slate-900 text-sm">{{ proposal.title }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500">Organizing Department:</span>
+                    <span class="font-semibold text-slate-800">{{ proposal.organizing_unit.name }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500">Sanctioned Budget:</span>
+                    <span class="font-bold font-mono text-emerald-700">₹{{ proposal.approved_budget|floatformat:2 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-500">Venue & Schedule:</span>
+                    <span class="font-medium text-slate-700">{{ proposal.venue }} &bull; {{ proposal.start_date|date:"M d, Y h:i A" }}</span>
+                </div>
+            </div>
+
+            <!-- Poster / Banner Upload Section -->
+            <div class="space-y-4">
+                <label class="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    <i class="fa-solid fa-image text-brand-600 mr-1.5"></i>Upload Event Banner / Poster Image
+                </label>
+                
+                <div class="border-2 border-dashed border-slate-300 hover:border-brand-500 rounded-2xl p-6 text-center bg-slate-50/50 transition">
+                    <input type="file" name="poster_file" id="posterInput" accept="image/*" class="hidden" onchange="previewPoster(this)">
+                    <label for="posterInput" class="cursor-pointer space-y-2 block">
+                        <div class="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mx-auto text-xl">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <div class="text-xs font-bold text-slate-700">Click to upload poster image from device</div>
+                        <p class="text-[11px] text-slate-400">Supports PNG, JPG, WEBP (Recommended 1200x600 px)</p>
+                    </label>
+                    <div id="imagePreviewContainer" class="hidden mt-4 pt-4 border-t border-slate-200">
+                        <img id="imagePreview" src="" alt="Poster preview" class="max-h-48 rounded-xl mx-auto shadow-md object-cover">
+                    </div>
+                </div>
+
+                <!-- Or choose a preset themed poster for demo presentation -->
+                <div class="space-y-2 pt-2">
+                    <span class="text-[11px] font-bold text-slate-500 uppercase">Or select an instant demo banner:</span>
+                    <div class="grid grid-cols-3 gap-2">
+                        <label class="cursor-pointer border-2 border-slate-200 has-checked:border-brand-600 rounded-xl overflow-hidden block">
+                            <input type="radio" name="poster_preset" value="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=80" class="hidden" checked>
+                            <img src="https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=400&q=80" class="h-16 w-full object-cover">
+                            <span class="text-[10px] font-bold block text-center py-1 bg-slate-50 text-slate-700">Tech / AI</span>
+                        </label>
+                        <label class="cursor-pointer border-2 border-slate-200 has-checked:border-brand-600 rounded-xl overflow-hidden block">
+                            <input type="radio" name="poster_preset" value="https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80" class="hidden">
+                            <img src="https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=400&q=80" class="h-16 w-full object-cover">
+                            <span class="text-[10px] font-bold block text-center py-1 bg-slate-50 text-slate-700">Conference</span>
+                        </label>
+                        <label class="cursor-pointer border-2 border-slate-200 has-checked:border-brand-600 rounded-xl overflow-hidden block">
+                            <input type="radio" name="poster_preset" value="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80" class="hidden">
+                            <img src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=400&q=80" class="h-16 w-full object-cover">
+                            <span class="text-[10px] font-bold block text-center py-1 bg-slate-50 text-slate-700">Cultural Fest</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Final Publish Action Button -->
+            <div class="pt-6 border-t border-slate-200 flex items-center justify-between">
+                <a href="{% url 'proposal_detail' proposal.id %}" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition">
+                    Back to Proposal
+                </a>
+
+                <button type="submit" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-500/25 transition flex items-center space-x-2">
+                    <i class="fa-solid fa-bullhorn"></i>
+                    <span>Publish Event to Campus Portal</span>
+                </button>
+            </div>
+        </form>
+
+    </div>
+</div>
+
+<script>
+    function previewPoster(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imagePreview').src = e.target.result;
+                document.getElementById('imagePreviewContainer').classList.remove('hidden');
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+</script>
+{% endblock %}

@@ -310,6 +310,7 @@
                                     <td class="py-4 px-4">
                                         <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold
                                             {% if proposal.status == 'APPROVED' or proposal.status == 'COMPLETED' %}bg-emerald-100 text-emerald-800 border border-emerald-200
+                                            {% elif proposal.status == 'APPROVED_PENDING_PUBLISH' %}bg-teal-100 text-teal-800 border border-teal-300 animate-pulse
                                             {% elif proposal.status == 'REVISION_REQUESTED' %}bg-amber-100 text-amber-800 border border-amber-200
                                             {% elif proposal.status == 'REJECTED' %}bg-rose-100 text-rose-800 border border-rose-200
                                             {% else %}bg-indigo-50 text-indigo-700 border border-indigo-200{% endif %}">
@@ -330,6 +331,12 @@
                                             Details
                                         </a>
 
+                                        {% if proposal.status == 'APPROVED_PENDING_PUBLISH' and proposal.proposer == user %}
+                                            <a href="{% url 'publish_event' proposal.id %}" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition">
+                                                <i class="fa-solid fa-bullhorn mr-1"></i>Publish Event
+                                            </a>
+                                        {% endif %}
+
                                         {% if proposal.status == 'REVISION_REQUESTED' %}
                                             <a href="{% url 'edit_proposal' proposal.id %}" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold shadow-sm transition">
                                                 <i class="fa-solid fa-pen-to-square mr-1"></i>Edit & Resubmit
@@ -337,9 +344,11 @@
                                         {% endif %}
 
                                         {% if proposal.status == 'APPROVED' or proposal.status == 'COMPLETED' %}
-                                            <a href="{% url 'live_event' proposal.id %}" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition">
-                                                <i class="fa-solid fa-qrcode mr-1"></i>Project QR
-                                            </a>
+                                            {% if proposal.proposer == user or user.is_superuser %}
+                                                <a href="{% url 'live_event' proposal.id %}" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition">
+                                                    <i class="fa-solid fa-qrcode mr-1"></i>Project QR
+                                                </a>
+                                            {% endif %}
                                             <a href="{% url 'compliance_report' proposal.id %}" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition">
                                                 <i class="fa-solid fa-chart-pie mr-1"></i>Report
                                             </a>

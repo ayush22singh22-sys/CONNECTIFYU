@@ -3,7 +3,7 @@ from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Avg, Count, Q, Sum
@@ -59,13 +59,13 @@ def logout_view(request):
 
 def switch_user_view(request, username):
     """
-    Requirement 1: Always cleanly default to the dashboard screen
+    Requirement: Always cleanly default to the dashboard screen
     when switching between entities (Student, Organizer, HOD, Deans, Director).
     """
     user = get_object_or_404(User, username=username)
     login(request, user)
     role_name = user.profile.get_role_display() if hasattr(user, 'profile') else 'User'
-    messages.info(request, f"Switched identity to: {user.get_full_name() or user.username} ({role_name})")
+    messages.info(request, f"Switched active view to: {user.get_full_name() or user.username} ({role_name})")
     return redirect('dashboard')
 
 
@@ -166,14 +166,12 @@ def register_student_view(request):
     return render(request, 'registration/register.html', {'allowed_domains': allowed_domains})
 
 
-
-
 @login_required
 def dashboard_view(request):
     """
-    G5: Login routing by is_staff.
-    - is_staff=False (students) → Student Dashboard
-    - is_staff=True (faculty, approvers, deans, director) → Staff Dashboard
+    G5: Login routing by is_staff:
+    - is_staff=False (students) → Dedicated Student Dashboard (no proposal features).
+    - is_staff=True (faculty, approvers, deans, director) → Staff/Executive Dashboard.
     """
     user = request.user
     profile = getattr(user, 'profile', None)
@@ -187,6 +185,8 @@ def dashboard_view(request):
         registrations = EventRegistration.objects.filter(student=user).select_related('event', 'event__organizing_unit').order_by('-registered_at')
         verified_count = registrations.filter(status='VERIFIED').count()
         checked_in_count = registrations.filter(status='CHECKED_IN').count()
+        
+        # Only published events (APPROVED or COMPLETED) are discoverable by students
         upcoming_events = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).order_by('start_date')[:6]
 
         context = {
@@ -203,12 +203,12 @@ def dashboard_view(request):
     # --- 2. FACULTY, APPROVER & EXECUTIVE DASHBOARD ---
     my_proposals = EventProposal.objects.filter(proposer=user).order_by('-created_at')
 
-    # Find all proposals waiting for this specific user's approval
+    # Find proposals waiting for this specific user's approval
     all_under_review = EventProposal.objects.filter(status='UNDER_REVIEW').order_by('-updated_at')
     pending_approvals = [p for p in all_under_review if p.is_awaiting_user(user)]
 
     all_approved = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).order_by('-start_date')[:6]
-    total_sanctioned_budget = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).aggregate(Sum('approved_budget'))['approved_budget__sum'] or 0
+    total_sanctioned_budget = EventProposal.objects.filter(status__in=['APPROVED', 'APPROVED_PENDING_PUBLISH', 'COMPLETED']).aggregate(Sum('approved_budget'))['approved_budget__sum'] or 0
 
     context = {
         'is_student': False,
@@ -220,6 +220,7 @@ def dashboard_view(request):
         'stats': {
             'total_proposals': EventProposal.objects.count(),
             'approved_count': EventProposal.objects.filter(status='APPROVED').count(),
+            'pending_publish_count': EventProposal.objects.filter(status='APPROVED_PENDING_PUBLISH').count(),
             'revision_count': EventProposal.objects.filter(status='REVISION_REQUESTED').count(),
             'total_students': UserProfile.objects.filter(role='STUDENT').count(),
             'total_budget_sanctioned': total_sanctioned_budget,
@@ -231,10 +232,8 @@ def dashboard_view(request):
 @login_required
 def create_proposal_view(request):
     """
-    Requirement 2 & 4:
-    - Students are STRICTLY barred from creating/publishing events.
-    - Publishers can choose between 3 preset approval chains or build a CUSTOM chain.
-    - Dean of Finance, Dean of Academics, and Director are MANDATORY in all chains.
+    Requirement 5: Department-wise HOD approval chains.
+    Students are strictly barred.
     """
     profile = getattr(request.user, 'profile', None)
     if not profile or profile.role == 'STUDENT':
@@ -255,10 +254,10 @@ def create_proposal_view(request):
         venue = request.POST.get('venue')
         expected_attendees = request.POST.get('expected_attendees', 100)
 
-        # Approval Chain Selection
+        # Department-Specific Approval Chain Selection
         chain_type = request.POST.get('chain_type', 'ACADEMIC')
         custom_roles = request.POST.getlist('custom_roles') if chain_type == 'CUSTOM' else None
-        chain_list = get_default_chain(chain_type, custom_roles)
+        chain_list = get_default_chain(chain_type, unit_id=unit_id, custom_roles=custom_roles)
 
         mess_req = request.POST.get('mess_requirements', '')
         transport_req = request.POST.get('transport_requirements', '')
@@ -290,7 +289,7 @@ def create_proposal_view(request):
 
         first_stage = proposal.current_stage
         stage_title = first_stage.get('title', 'Stage 1') if first_stage else 'Stage 1'
-        messages.success(request, f"Event proposal '{proposal.title}' submitted! Routed to Stage 1: {stage_title}.")
+        messages.success(request, f"Event proposal '{proposal.title}' filed! Routed to Stage 1: {stage_title}.")
         return redirect('proposal_detail', proposal_id=proposal.id)
 
     return render(request, 'events/proposal_form.html', {'units': units, 'is_edit': False})
@@ -323,18 +322,15 @@ def edit_proposal_view(request, proposal_id):
         proposal.transport_requirements = request.POST.get('transport_requirements', '')
         proposal.maintenance_requirements = request.POST.get('maintenance_requirements', '')
 
-        # Optionally update approval chain if requested
         new_chain_type = request.POST.get('chain_type', proposal.chain_type)
         if new_chain_type != proposal.chain_type or new_chain_type == 'CUSTOM':
             custom_roles = request.POST.getlist('custom_roles') if new_chain_type == 'CUSTOM' else None
             proposal.chain_type = new_chain_type
-            proposal.approval_chain = get_default_chain(new_chain_type, custom_roles)
+            proposal.approval_chain = get_default_chain(new_chain_type, unit_id=unit_id, custom_roles=custom_roles)
         else:
-            # Reset existing chain statuses to start from step 1
             for idx, st in enumerate(proposal.approval_chain, start=1):
                 st['status'] = 'PENDING' if idx == 1 else 'WAITING'
 
-        # Reset to Step 1 and increment revision cycle
         proposal.status = 'UNDER_REVIEW'
         proposal.current_stage_index = 0
         proposal.revision_count += 1
@@ -363,6 +359,10 @@ def edit_proposal_view(request, proposal_id):
 
 @login_required
 def proposal_detail_view(request, proposal_id):
+    """
+    Requirement 2: Displays registered students and attended students section
+    for the organizer and reviewing authorities.
+    """
     proposal = get_object_or_404(EventProposal, id=proposal_id)
     is_approver = proposal.is_awaiting_user(request.user)
     is_proposer = (proposal.proposer == request.user)
@@ -370,14 +370,13 @@ def proposal_detail_view(request, proposal_id):
     logs = proposal.logs.all().order_by('-created_at')
     logistics = proposal.logistics_notifications.all()
 
-    # Dynamic stages from the proposal's configured chain
     chain = proposal.approval_chain or []
     current_index = proposal.current_stage_index
 
     stages = []
     for idx, st in enumerate(chain):
         step_num = idx + 1
-        if proposal.status == 'APPROVED' or proposal.status == 'COMPLETED':
+        if proposal.status in ['APPROVED', 'APPROVED_PENDING_PUBLISH', 'COMPLETED']:
             status = 'CLEARED'
         elif proposal.status == 'UNDER_REVIEW':
             if idx < current_index:
@@ -396,6 +395,18 @@ def proposal_detail_view(request, proposal_id):
             'status': status,
         })
 
+    # Requirement 2: Fetch student participation & attendance records
+    all_registrations = proposal.registrations.all().select_related('student', 'student__profile', 'feedback').order_by('-registered_at')
+    attended_students = [r for r in all_registrations if r.status in ['CHECKED_IN', 'VERIFIED']]
+    verified_students = [r for r in all_registrations if r.status == 'VERIFIED']
+
+    roster_stats = {
+        'total_registered': len(all_registrations),
+        'total_attended': len(attended_students),
+        'total_verified': len(verified_students),
+        'turnout_pct': round((len(attended_students) / len(all_registrations) * 100), 1) if all_registrations else 0,
+    }
+
     context = {
         'proposal': proposal,
         'is_approver': is_approver,
@@ -406,6 +417,9 @@ def proposal_detail_view(request, proposal_id):
         'current_stage_num': current_index + 1,
         'total_stages': len(chain),
         'user_role': getattr(request.user.profile, 'role', 'STUDENT') if hasattr(request.user, 'profile') else 'STUDENT',
+        'all_registrations': all_registrations,
+        'attended_students': attended_students,
+        'roster_stats': roster_stats,
     }
     return render(request, 'events/proposal_detail.html', context)
 
@@ -446,14 +460,12 @@ def process_approval_view(request, proposal_id):
 
         next_idx = current_idx + 1
         if next_idx >= len(chain):
-            # Final stage approved!
-            proposal.status = 'APPROVED'
+            proposal.status = 'APPROVED_PENDING_PUBLISH'
             proposal.current_stage_index = next_idx
             proposal.save()
             dispatch_logistics_notifications(proposal)
-            messages.success(request, f"Executive clearance granted! '{proposal.title}' is approved, published to students, and college logistics sections have been notified.")
+            messages.success(request, f"Executive clearance granted! '{proposal.title}' is approved and logistics sections have been notified. It is now ready for the Faculty Coordinator to upload a poster and publish.")
         else:
-            # Advance to next stage
             chain[next_idx]['status'] = 'PENDING'
             proposal.current_stage_index = next_idx
             proposal.approval_chain = chain
@@ -490,7 +502,7 @@ def process_approval_view(request, proposal_id):
 
         next_idx = current_idx + 1
         if next_idx >= len(chain):
-            proposal.status = 'APPROVED'
+            proposal.status = 'APPROVED_PENDING_PUBLISH'
             proposal.current_stage_index = next_idx
             proposal.save()
             dispatch_logistics_notifications(proposal)
@@ -573,6 +585,63 @@ def _notify_proposer_revision(proposal, approver, stage_title, remarks, action):
         )
     except Exception:
         pass  # Email failure must never crash the approval flow
+
+
+# --- Faculty Poster Upload & Final Publish View ---
+
+@login_required
+def publish_event_view(request, proposal_id):
+    proposal = get_object_or_404(EventProposal, id=proposal_id)
+    if proposal.proposer != request.user and not request.user.is_superuser:
+        messages.error(request, "Only the designated event coordinator can publish this event.")
+        return redirect('proposal_detail', proposal_id=proposal.id)
+
+    if proposal.status not in ['APPROVED_PENDING_PUBLISH', 'APPROVED']:
+        messages.warning(request, "This proposal has not yet cleared all administrative approval stages.")
+        return redirect('proposal_detail', proposal_id=proposal.id)
+
+    if request.method == 'POST':
+        poster_file = request.FILES.get('poster_file')
+        poster_preset = request.POST.get('poster_preset', '')
+
+        if poster_file:
+            proposal.poster_image = poster_file
+        elif poster_preset:
+            proposal.poster_data_uri = poster_preset
+
+        proposal.status = 'APPROVED'
+        proposal.published_at = timezone.now()
+        proposal.save()
+
+        messages.success(request, f"🎉 '{proposal.title}' is now officially published! The event is now live on the Student Campus Events portal for registrations.")
+        return redirect('proposal_detail', proposal_id=proposal.id)
+
+    return render(request, 'events/publish_event.html', {'proposal': proposal})
+
+
+# --- Requirement 4: General Event Description View for Students & Other Entities ---
+
+@login_required
+def event_public_detail_view(request, proposal_id):
+    """
+    Requirement 4: Dedicated public/campus description view of the event.
+    - Students can register (one time only) as Participant, Volunteer, or Viewer.
+    - Other entities (Faculty, HODs, Deans, Director) can view specifications only.
+    """
+    proposal = get_object_or_404(EventProposal, id=proposal_id)
+    
+    # Check if student already registered
+    user_registration = EventRegistration.objects.filter(event=proposal, student=request.user).first()
+    is_student = hasattr(request.user, 'profile') and request.user.profile.role == 'STUDENT'
+    is_organizer = (proposal.proposer == request.user)
+
+    context = {
+        'proposal': proposal,
+        'user_registration': user_registration,
+        'is_student': is_student,
+        'is_organizer': is_organizer,
+    }
+    return render(request, 'events/event_public_detail.html', context)
 
 
 # ── Student Facing Views ──────────────────────────────────────────────────────
@@ -664,36 +733,40 @@ def event_detail_view(request, proposal_id):
 @login_required
 def event_register_view(request, proposal_id):
     """
-    Phase B: Register or update registration role for an approved event.
-    Staff members are barred from student registration.
+    Requirement 1 & Phase B: Students can register for an approved event as Participant, Volunteer, or Viewer.
+    Other entities (faculty/staff) are barred from registering as students.
+    Only one registration per student is allowed.
     """
     proposal = get_object_or_404(EventProposal, id=proposal_id, status__in=['APPROVED', 'COMPLETED'])
 
-    if request.user.is_staff and _get_user_role(request.user) != 'STUDENT':
-        messages.error(request, "Staff members cannot register as student attendees.")
-        return redirect('event_detail', proposal_id=proposal_id)
+    # Role check: only students register
+    role_name = _get_user_role(request.user)
+    if role_name != 'STUDENT':
+        messages.error(request, "Only students can register for events. Faculty and institutional heads can view details.")
+        return redirect('event_detail', proposal_id=proposal.id)
 
     if request.method == 'POST':
+        # Check if already registered
+        existing_reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
+        if existing_reg:
+            messages.warning(request, f"You are already registered for '{proposal.title}' as a {existing_reg.get_role_display()}. Only one registration per student is allowed.")
+            return redirect('event_detail', proposal_id=proposal.id)
+
         role = request.POST.get('role', 'PARTICIPANT')
         valid_roles = [r[0] for r in EventRegistration.ROLE_CHOICES]
         if role not in valid_roles:
             role = 'PARTICIPANT'
 
-        reg, created = EventRegistration.objects.get_or_create(
+        EventRegistration.objects.create(
             event=proposal,
             student=request.user,
-            defaults={'role': role, 'status': 'REGISTERED'}
+            role=role,
+            status='REGISTERED'
         )
-        if not created:
-            reg.role = role
-            reg.save()
-            messages.info(request, f"Your registration role for '{proposal.title}' was updated to {reg.get_role_display()}.")
-        else:
-            messages.success(request, f"Successfully registered for '{proposal.title}' as {reg.get_role_display()}!")
-
+        messages.success(request, f"Registration confirmed! You have registered as a {role.capitalize()} for '{proposal.title}'.")
         return redirect('event_detail', proposal_id=proposal.id)
 
-    return redirect('event_detail', proposal_id=proposal_id)
+    return redirect('event_detail', proposal_id=proposal.id)
 
 
 @login_required
@@ -715,8 +788,9 @@ def cancel_registration_view(request, proposal_id):
 
         reg.delete()
         messages.success(request, f"Your registration for '{proposal.title}' has been successfully cancelled.")
+        return redirect('event_detail', proposal_id=proposal_id)
 
-    return redirect('student_events')
+    return redirect('event_detail', proposal_id=proposal_id)
 
 
 @login_required
@@ -725,14 +799,22 @@ def my_registrations_view(request):
     return render(request, 'events/my_registrations.html', {'registrations': registrations})
 
 
-# --- Live Presentation & QR / Selfie Check-In ---
+# --- Requirement 3: Organizer-Only Live Rotating QR Screen ---
 
 @login_required
 def live_event_view(request, proposal_id):
-    """Faculty / Organizer screen to project QR code on auditorium screen."""
+    """
+    Requirement 3: OTHER THAN THE ORGANIZER, NO ONE HAS ACCESS TO OPEN LIVE QR.
+    Strictly checks that request.user == proposal.proposer.
+    """
     proposal = get_object_or_404(EventProposal, id=proposal_id)
 
-    checkin_url = request.build_absolute_uri(f"/events/checkin/?token={proposal.qr_checkin_token}")
+    if proposal.proposer != request.user and not request.user.is_superuser:
+        messages.error(request, f"Access Denied: Only the designated event coordinator ({proposal.proposer.get_full_name() or proposal.proposer.username}) is authorized to project the live attendance QR code.")
+        return redirect('proposal_detail', proposal_id=proposal.id)
+
+    token, seconds_left = proposal.get_rotating_qr_token()
+    checkin_url = request.build_absolute_uri(f"/events/checkin/?token={token}")
     qr_data_uri = generate_qr_base64(checkin_url)
 
     registrations = proposal.registrations.all().order_by('-checked_in_at')
@@ -746,6 +828,9 @@ def live_event_view(request, proposal_id):
         'proposal': proposal,
         'qr_data_uri': qr_data_uri,
         'checkin_url': checkin_url,
+        'current_token': token,
+        'seconds_left': seconds_left,
+        'interval': proposal.ROTATION_INTERVAL,
         'registrations': registrations,
         'stats': stats,
     }
@@ -753,32 +838,69 @@ def live_event_view(request, proposal_id):
 
 
 @login_required
+def rotating_qr_api_view(request, proposal_id):
+    """
+    Requirement 3: Only the organizer can poll the rotating QR token feed.
+    """
+    proposal = get_object_or_404(EventProposal, id=proposal_id)
+    if proposal.proposer != request.user and not request.user.is_superuser:
+        return JsonResponse({'error': 'Unauthorized: Only event organizer can access rotating QR code feed'}, status=403)
+
+    token, seconds_left = proposal.get_rotating_qr_token()
+    checkin_url = request.build_absolute_uri(f"/events/checkin/?token={token}")
+    qr_data_uri = generate_qr_base64(checkin_url)
+
+    registrations = proposal.registrations.all()
+    data = {
+        'token': token,
+        'seconds_left': seconds_left,
+        'interval': proposal.ROTATION_INTERVAL,
+        'qr_data_uri': qr_data_uri,
+        'checkin_url': checkin_url,
+        'total_registered': registrations.count(),
+        'checked_in': registrations.filter(status__in=['CHECKED_IN', 'VERIFIED']).count(),
+        'verified': registrations.filter(status='VERIFIED').count(),
+    }
+    return JsonResponse(data)
+
+
+@login_required
 def checkin_view(request):
     """
-    G10 — Hardened Check-in:
-    - Only registered students can check in (no auto-create).
-    - Duplicate scan: friendly message, no double CHECKED_IN.
+    G10 — Hardened Check-in & Rotating QR Token:
     - Non-students (staff/faculty) blocked from checking in.
-    - Invalid token: clear error.
+    - Validates dynamic rotating QR token against expiration window.
+    - Only registered students can check in.
+    - Duplicate scan: friendly message, no double CHECKED_IN.
     """
     # Staff/faculty should not be checking into events
     if request.user.is_staff and _get_user_role(request.user) != 'STUDENT':
         messages.error(request, "Staff members do not check in to events via QR.")
         return redirect('dashboard')
 
-    token = request.GET.get('token') or request.POST.get('token')
+    token = request.GET.get('token') or request.POST.get('token') or ''
     proposal = None
+
     if token:
-        proposal = EventProposal.objects.filter(qr_checkin_token=token).first()
+        base_token = token.split('_')[0] if '_' in token else token
+        proposal = EventProposal.objects.filter(qr_checkin_token=base_token).first()
 
     if not proposal and token:
         messages.error(request, "Invalid or expired QR code. Please scan the current QR code displayed on the projector.")
         return render(request, 'events/checkin_selfie.html', {'proposal': None, 'token': ''})
 
     if request.method == 'POST':
-        token = request.POST.get('token')
+        token = request.POST.get('token', '').strip()
         selfie_file = request.FILES.get('selfie_image')
-        proposal = get_object_or_404(EventProposal, qr_checkin_token=token)
+        selfie_data = request.POST.get('selfie_image', '').strip()
+
+        base_token = token.split('_')[0] if '_' in token else token
+        proposal = get_object_or_404(EventProposal, qr_checkin_token=base_token)
+
+        is_valid, reason = proposal.validate_rotating_token(token)
+        if not is_valid:
+            messages.error(request, f"❌ {reason}")
+            return render(request, 'events/checkin_selfie.html', {'proposal': proposal, 'token': token, 'expired': True})
 
         # G10a: Must be registered for this event
         reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
@@ -797,25 +919,30 @@ def checkin_view(request):
         reg.checked_in_at = timezone.now()
         if selfie_file:
             reg.selfie_image = selfie_file
+        elif selfie_data and selfie_data.startswith('data:image'):
+            try:
+                import base64
+                from django.core.files.base import ContentFile
+                format_part, imgstr = selfie_data.split(';base64,')
+                ext = format_part.split('/')[-1]
+                reg.selfie_image = ContentFile(base64.b64decode(imgstr), name=f"selfie_{reg.id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.{ext}")
+            except Exception:
+                pass
         reg.save()
 
-        messages.success(request, "Check-in verified via selfie! Please complete the quick mandatory feedback below to verify your attendance.")
+        messages.success(request, "Check-in verified via live selfie! Please complete the quick mandatory feedback below to verify your attendance.")
         return redirect('event_feedback', registration_id=reg.id)
 
     context = {
         'proposal': proposal,
-        'token': token or '',
+        'token': token,
+        'expired': False,
     }
     return render(request, 'events/checkin_selfie.html', context)
 
 
 @login_required
 def feedback_view(request, registration_id):
-    """
-    Step 8 in lifecycle:
-    Attendance is only marked 'VERIFIED' once student submits feedback!
-    Guarantees 100% feedback collection.
-    """
     reg = get_object_or_404(EventRegistration, id=registration_id, student=request.user)
 
     if hasattr(reg, 'feedback'):
@@ -849,11 +976,6 @@ def feedback_view(request, registration_id):
 
 @login_required
 def compliance_report_view(request, proposal_id):
-    """
-    Step 9 in lifecycle:
-    System automatically compiles compliance report combining final budget,
-    actual verified attendance, and student feedback ratings.
-    """
     proposal = get_object_or_404(EventProposal, id=proposal_id)
     registrations = proposal.registrations.all()
 
@@ -890,3 +1012,15 @@ def compliance_report_view(request, proposal_id):
         'approval_logs': proposal.logs.all().order_by('created_at'),
     }
     return render(request, 'events/compliance_report.html', context)
+
+
+# --- Superadmin User & Entity Database Manager ---
+
+@login_required
+def superadmin_users_view(request):
+    if not request.user.is_superuser:
+        messages.error(request, "Access restricted to Superadministrator.")
+        return redirect('dashboard')
+
+    users = User.objects.all().select_related('profile').order_by('profile__role', 'username')
+    return render(request, 'events/superadmin_users.html', {'managed_users': users})

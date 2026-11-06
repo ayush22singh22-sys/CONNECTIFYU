@@ -91,6 +91,12 @@
                             </a>
                         {% endif %}
 
+                        {% if user.is_superuser %}
+                            <a href="{% url 'superadmin_users' %}" class="px-3 py-2 rounded-lg text-sm font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition">
+                                <i class="fa-solid fa-users-gear mr-1.5 text-amber-600"></i>User Directory
+                            </a>
+                        {% endif %}
+
                         {% if pending_approvals_count > 0 and user.profile.role != 'STUDENT' %}
                             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
                                 <i class="fa-solid fa-clock mr-1"></i>{{ pending_approvals_count }} Awaiting Review
@@ -120,8 +126,7 @@
                             <i class="fa-solid fa-arrow-right-from-bracket"></i>
                         </a>
                     {% else %}
-                        <a href="{% url 'login' %}" class="text-sm font-semibold text-slate-700 hover:text-brand-600 px-3 py-2">Log in</a>
-                        <a href="{% url 'register' %}" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg shadow-sm shadow-brand-500/20">Sign up</a>
+                        <a href="{% url 'login' %}" class="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg shadow-sm shadow-brand-500/20">Sign in</a>
                     {% endif %}
                 </div>
             </div>

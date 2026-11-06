@@ -121,28 +121,62 @@
 
                             <!-- Unfolded Custom Stage Builder -->
                             <div id="customChainBuilder" class="{% if proposal.chain_type != 'CUSTOM' %}hidden{% endif %} mt-4 p-4 bg-slate-100/80 rounded-xl border border-slate-300 space-y-3">
-                                <div class="text-[11px] font-bold text-slate-700 uppercase">Select Preliminary Reviewers:</div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
-                                        <input type="checkbox" name="custom_roles" value="HOD" class="rounded text-brand-600">
-                                        <span>Head of Department (HOD)</span>
-                                    </label>
-                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
-                                        <input type="checkbox" name="custom_roles" value="CLUB_HEAD" class="rounded text-brand-600">
-                                        <span>Faculty Advisor / Club Head</span>
-                                    </label>
-                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
-                                        <input type="checkbox" name="custom_roles" value="REGISTRAR" class="rounded text-brand-600">
-                                        <span>Registrar / HR Section</span>
-                                    </label>
-                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
-                                        <input type="checkbox" name="custom_roles" value="DEAN_RESEARCH" class="rounded text-brand-600">
-                                        <span>Dean of Research & Consultancy (R&D)</span>
-                                    </label>
-                                    <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200">
-                                        <input type="checkbox" name="custom_roles" value="DEAN_STUDENT_WELFARE" class="rounded text-brand-600">
-                                        <span>Dean of Student Welfare (DSW)</span>
-                                    </label>
+                                <div>
+                                    <div class="text-[11px] font-bold text-slate-800 uppercase tracking-wider mb-1">
+                                        Select Preliminary Departmental Reviewers:
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mb-2">
+                                        Choose the exact Department HOD or Faculty Advisor relevant to your event scope:
+                                    </p>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <span class="text-[10px] font-bold uppercase text-indigo-700 tracking-wide block">Department HOD Reviewers:</span>
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                                        <label class="flex items-start space-x-2 bg-white p-2.5 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="HOD_CSE" class="mt-0.5 rounded text-brand-600">
+                                            <div>
+                                                <span class="font-bold text-slate-900 block text-[11px]">HOD - Computer Science</span>
+                                                <span class="text-[10px] text-slate-500">Dr. K. V. Ramanathan</span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-start space-x-2 bg-white p-2.5 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="HOD_ECE" class="mt-0.5 rounded text-brand-600">
+                                            <div>
+                                                <span class="font-bold text-slate-900 block text-[11px]">HOD - Electronics (ECE)</span>
+                                                <span class="text-[10px] text-slate-500">Dr. Sunita Kulkarni</span>
+                                            </div>
+                                        </label>
+                                        <label class="flex items-start space-x-2 bg-white p-2.5 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="HOD_MECH" class="mt-0.5 rounded text-brand-600">
+                                            <div>
+                                                <span class="font-bold text-slate-900 block text-[11px]">HOD - Mechanical</span>
+                                                <span class="text-[10px] text-slate-500">Dr. Vikramaditya Rathore</span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-2 pt-1">
+                                    <span class="text-[10px] font-bold uppercase text-indigo-700 tracking-wide block">Deans & Campus Officials:</span>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                        <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="DEAN_RESEARCH" class="rounded text-brand-600">
+                                            <span class="text-[11px]">Dean of Research & Consultancy (R&D)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="DEAN_STUDENT_WELFARE" class="rounded text-brand-600">
+                                            <span class="text-[11px]">Dean of Student Welfare (DSW)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="REGISTRAR" class="rounded text-brand-600">
+                                            <span class="text-[11px]">Registrar / HR Establishment Section</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 hover:border-brand-400 cursor-pointer">
+                                            <input type="checkbox" name="custom_roles" value="CLUB_HEAD" class="rounded text-brand-600">
+                                            <span class="text-[11px]">Student Club Faculty Advisor</span>
+                                        </label>
+                                    </div>
                                 </div>
 
                                 <div class="pt-2 border-t border-slate-200">
