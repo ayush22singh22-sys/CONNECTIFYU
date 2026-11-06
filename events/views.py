@@ -579,26 +579,106 @@ def _notify_proposer_revision(proposal, approver, stage_title, remarks, action):
 
 @login_required
 def student_events_view(request):
-    """Students browse approved events and register."""
-    published_events = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).order_by('start_date')
+    """
+    Phase B: Students browse approved events with multi-criteria search and filters:
+    - Text search (title, description, speaker, venue)
+    - Department / Organizing Unit filter
+    - Date timeframe (upcoming, past, all)
+    """
+    now = timezone.now()
+    events_qs = EventProposal.objects.filter(status__in=['APPROVED', 'COMPLETED']).select_related('organizing_unit')
 
+    # 1. Search Query
+    q = request.GET.get('q', '').strip()
+    if q:
+        events_qs = events_qs.filter(
+            Q(title__icontains=q) |
+            Q(description__icontains=q) |
+            Q(guest_speaker__icontains=q) |
+            Q(venue__icontains=q)
+        )
+
+    # 2. Organizing Unit Filter
+    unit_id = request.GET.get('unit', '').strip()
+    if unit_id:
+        events_qs = events_qs.filter(organizing_unit_id=unit_id)
+
+    # 3. Date Timeframe Filter
+    date_filter = request.GET.get('date', 'upcoming').strip()
+    if date_filter == 'upcoming':
+        events_qs = events_qs.filter(start_date__gte=now).order_by('start_date')
+    elif date_filter == 'past':
+        events_qs = events_qs.filter(start_date__lt=now).order_by('-start_date')
+    else:  # 'all'
+        events_qs = events_qs.order_by('-start_date')
+
+    # Mapping of user's active registrations
     user_registrations = {}
     if hasattr(request.user, 'event_registrations'):
         for reg in request.user.event_registrations.all():
             user_registrations[reg.event_id] = reg
 
+    units = OrganizingUnit.objects.all().order_by('name')
+
     context = {
-        'events': published_events,
+        'events': events_qs,
         'user_registrations': user_registrations,
+        'units': units,
+        'selected_q': q,
+        'selected_unit': unit_id,
+        'selected_date': date_filter,
+        'total_count': events_qs.count(),
     }
     return render(request, 'events/student_events.html', context)
 
 
 @login_required
+def event_detail_view(request, proposal_id):
+    """
+    Phase B: Dedicated Event Detail Page for students and attendees.
+    - Non-staff students cannot access unpublished proposals (404/redirect).
+    - Displays full event agenda, venue, speaker profile, and interactive registration box.
+    """
+    proposal = get_object_or_404(EventProposal, id=proposal_id)
+
+    # Security: Unpublished events only viewable by staff or proposer
+    if proposal.status not in ['APPROVED', 'COMPLETED']:
+        is_staff_or_proposer = request.user.is_staff or proposal.proposer == request.user
+        if not is_staff_or_proposer:
+            messages.error(request, "Access Denied: This event is not yet published to students.")
+            return redirect('student_events')
+
+    user_reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
+    is_staff_user = request.user.is_staff and _get_user_role(request.user) != 'STUDENT'
+
+    context = {
+        'proposal': proposal,
+        'registration': user_reg,
+        'is_registered': user_reg is not None,
+        'is_staff_user': is_staff_user,
+        'role_choices': EventRegistration.ROLE_CHOICES,
+    }
+    return render(request, 'events/event_detail.html', context)
+
+
+@login_required
 def event_register_view(request, proposal_id):
+    """
+    Phase B: Register or update registration role for an approved event.
+    Staff members are barred from student registration.
+    """
     proposal = get_object_or_404(EventProposal, id=proposal_id, status__in=['APPROVED', 'COMPLETED'])
+
+    if request.user.is_staff and _get_user_role(request.user) != 'STUDENT':
+        messages.error(request, "Staff members cannot register as student attendees.")
+        return redirect('event_detail', proposal_id=proposal_id)
+
     if request.method == 'POST':
         role = request.POST.get('role', 'PARTICIPANT')
+        valid_roles = [r[0] for r in EventRegistration.ROLE_CHOICES]
+        if role not in valid_roles:
+            role = 'PARTICIPANT'
+
         reg, created = EventRegistration.objects.get_or_create(
             event=proposal,
             student=request.user,
@@ -610,14 +690,38 @@ def event_register_view(request, proposal_id):
             messages.info(request, f"Your registration role for '{proposal.title}' was updated to {reg.get_role_display()}.")
         else:
             messages.success(request, f"Successfully registered for '{proposal.title}' as {reg.get_role_display()}!")
-        return redirect('dashboard')
+
+        return redirect('event_detail', proposal_id=proposal.id)
+
+    return redirect('event_detail', proposal_id=proposal_id)
+
+
+@login_required
+def cancel_registration_view(request, proposal_id):
+    """
+    Phase B: Student can cancel their registration if they have not yet checked in.
+    """
+    if request.method == 'POST':
+        proposal = get_object_or_404(EventProposal, id=proposal_id)
+        reg = EventRegistration.objects.filter(event=proposal, student=request.user).first()
+
+        if not reg:
+            messages.warning(request, "You are not registered for this event.")
+            return redirect('event_detail', proposal_id=proposal_id)
+
+        if reg.status in ('CHECKED_IN', 'VERIFIED'):
+            messages.error(request, f"Cannot cancel registration because you have already {reg.get_status_display().lower()}.")
+            return redirect('event_detail', proposal_id=proposal_id)
+
+        reg.delete()
+        messages.success(request, f"Your registration for '{proposal.title}' has been successfully cancelled.")
 
     return redirect('student_events')
 
 
 @login_required
 def my_registrations_view(request):
-    registrations = EventRegistration.objects.filter(student=request.user).order_by('-registered_at')
+    registrations = EventRegistration.objects.filter(student=request.user).select_related('event', 'event__organizing_unit').order_by('-registered_at')
     return render(request, 'events/my_registrations.html', {'registrations': registrations})
 
 

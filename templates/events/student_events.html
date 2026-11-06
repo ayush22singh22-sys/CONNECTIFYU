@@ -5,12 +5,12 @@
 {% block content %}
 <div class="space-y-6">
 
-    <!-- Header -->
+    <!-- Header & Action Ribbon -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
             <h1 class="text-2xl font-black text-slate-900">Campus Events & Symposia</h1>
             <p class="text-xs text-slate-500 mt-1">
-                Explore cleared and published events across all academic departments and student clubs.
+                Explore approved and published events across all engineering departments, technical clubs, and campus societies.
             </p>
         </div>
         {% if user.profile.role == 'STUDENT' %}
@@ -18,6 +18,55 @@
                 <i class="fa-solid fa-ticket mr-1.5"></i>My Registered Events
             </a>
         {% endif %}
+    </div>
+
+    <!-- Search & Filter Controls -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <form method="GET" action="{% url 'student_events' %}" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <!-- Text Search -->
+                <div class="sm:col-span-6 relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" name="q" value="{{ selected_q }}" placeholder="Search by title, keynote speaker, venue, or topics..." class="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                </div>
+
+                <!-- Organizing Unit Dropdown -->
+                <div class="sm:col-span-4">
+                    <select name="unit" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-brand-500 focus:outline-none">
+                        <option value="">All Departments & Clubs</option>
+                        {% for u in units %}
+                            <option value="{{ u.id }}" {% if selected_unit == u.id|stringformat:"s" %}selected{% endif %}>{{ u.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Submit & Reset Buttons -->
+                <div class="sm:col-span-2 flex items-center space-x-2">
+                    <button type="submit" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl transition shadow-sm">
+                        Filter
+                    </button>
+                    {% if selected_q or selected_unit or selected_date != 'upcoming' %}
+                        <a href="{% url 'student_events' %}" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition" title="Clear Filters">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Timeframe Filter Tabs -->
+            <div class="flex items-center space-x-2 pt-2 border-t border-slate-100 text-xs">
+                <span class="text-slate-400 text-[11px] font-semibold uppercase tracking-wider mr-2">Timeline:</span>
+                <button type="submit" name="date" value="upcoming" class="px-3 py-1 rounded-lg font-semibold transition {% if selected_date == 'upcoming' %}bg-brand-50 text-brand-700 border border-brand-200 font-bold{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                    Upcoming ({{ total_count }})
+                </button>
+                <button type="submit" name="date" value="all" class="px-3 py-1 rounded-lg font-semibold transition {% if selected_date == 'all' %}bg-brand-50 text-brand-700 border border-brand-200 font-bold{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                    All Events
+                </button>
+                <button type="submit" name="date" value="past" class="px-3 py-1 rounded-lg font-semibold transition {% if selected_date == 'past' %}bg-brand-50 text-brand-700 border border-brand-200 font-bold{% else %}text-slate-600 hover:bg-slate-50{% endif %}">
+                    Past Events
+                </button>
+            </div>
+        </form>
     </div>
 
     <!-- Events Grid -->
@@ -37,7 +86,9 @@
                     </div>
 
                     <h3 class="font-extrabold text-base text-slate-900 leading-snug">
-                        {{ event.title }}
+                        <a href="{% url 'event_detail' event.id %}" class="hover:text-brand-600 transition">
+                            {{ event.title }}
+                        </a>
                     </h3>
 
                     <p class="text-xs text-slate-600 line-clamp-3 leading-relaxed">
@@ -47,7 +98,7 @@
                     <div class="space-y-1.5 pt-2 text-xs text-slate-500">
                         <div class="flex items-center">
                             <i class="fa-solid fa-chalkboard-user w-4 text-slate-400 mr-2"></i>
-                            <span class="truncate">Speaker: <strong class="text-slate-700">{{ event.guest_speaker }}</strong></span>
+                            <span class="truncate">Speaker: <strong class="text-slate-700">{{ event.guest_speaker|default:"Faculty Panel" }}</strong></span>
                         </div>
                         <div class="flex items-center">
                             <i class="fa-solid fa-location-dot w-4 text-slate-400 mr-2"></i>
@@ -60,26 +111,32 @@
                     </div>
                 </div>
 
-                <!-- Card Footer / Registration Action -->
-                <div class="p-4 bg-slate-50 border-t border-slate-100">
+                <!-- Card Footer / Registration & Details Action -->
+                <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
                     {% if user.profile.role == 'STUDENT' %}
-                        <!-- Registration Form for Students -->
-                        <form method="POST" action="{% url 'event_register' event.id %}" class="flex items-center gap-2">
-                            {% csrf_token %}
-                            <select name="role" class="px-2.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-brand-500 focus:outline-none flex-grow">
-                                <option value="PARTICIPANT">Participant</option>
-                                <option value="VOLUNTEER">Student Volunteer</option>
-                                <option value="VIEWER">Audience / Viewer</option>
-                            </select>
-                            <button type="submit" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-sm transition whitespace-nowrap">
-                                Register
-                            </button>
-                        </form>
+                        {% if event.id in user_registrations %}
+                            <div class="flex items-center space-x-1.5 text-emerald-700 font-bold">
+                                <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                                <span>Registered</span>
+                            </div>
+                            <a href="{% url 'event_detail' event.id %}" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl border border-emerald-200 transition">
+                                Manage &rarr;
+                            </a>
+                        {% else %}
+                            <span class="text-slate-500">Cap: {{ event.expected_attendees }}</span>
+                            <a href="{% url 'event_detail' event.id %}" class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-sm transition">
+                                View & Register &rarr;
+                            </a>
+                        {% endif %}
                     {% else %}
-                        <div class="flex items-center justify-between text-xs">
-                            <span class="text-slate-500 font-medium">Capacity: {{ event.expected_attendees }} attendees</span>
+                        <span class="text-slate-500 font-medium">Capacity: {{ event.expected_attendees }} attendees</span>
+                        <div class="flex items-center space-x-2">
+                            <a href="{% url 'event_detail' event.id %}" class="text-slate-600 hover:text-slate-800 font-semibold">
+                                Details
+                            </a>
+                            <span class="text-slate-300">|</span>
                             <a href="{% url 'live_event' event.id %}" class="font-bold text-brand-600 hover:text-brand-700 flex items-center">
-                                Open Live QR <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
+                                Live QR <i class="fa-solid fa-arrow-right ml-1 text-[10px]"></i>
                             </a>
                         </div>
                     {% endif %}
@@ -89,8 +146,13 @@
         {% empty %}
             <div class="col-span-full bg-white p-12 rounded-2xl border border-slate-200 text-center">
                 <i class="fa-solid fa-calendar-xmark text-slate-300 text-4xl mb-3"></i>
-                <h3 class="text-base font-bold text-slate-800">No events currently published</h3>
-                <p class="text-xs text-slate-500 mt-1">Check back soon or submit a new proposal to start the approval pipeline.</p>
+                <h3 class="text-base font-bold text-slate-800">No events matched your search</h3>
+                <p class="text-xs text-slate-500 mt-1">Try clearing filters or check back later for upcoming college events.</p>
+                {% if selected_q or selected_unit or selected_date != 'upcoming' %}
+                    <a href="{% url 'student_events' %}" class="inline-block mt-4 px-4 py-2 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 hover:bg-indigo-100 transition">
+                        Reset Filters
+                    </a>
+                {% endif %}
             </div>
         {% endfor %}
     </div>

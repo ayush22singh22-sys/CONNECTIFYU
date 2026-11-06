@@ -256,3 +256,129 @@ class AccountsAndSecurityTestCase(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertFalse(EventRegistration.objects.filter(event=proposal, student=student).exists())
 
+
+class PhaseBStudentPortalTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.faculty = User.objects.create_user(username='fac_portal', password='password123', is_staff=True)
+        UserProfile.objects.create(user=self.faculty, role='FACULTY')
+
+        self.student = User.objects.create_user(username='stu_portal', password='password123', is_staff=False)
+        UserProfile.objects.create(user=self.student, role='STUDENT')
+
+        self.dept_cse = OrganizingUnit.objects.create(name='CSE Department', unit_type='DEPARTMENT')
+        self.club_robotics = OrganizingUnit.objects.create(name='Robotics Club', unit_type='CLUB')
+
+        now = timezone.now()
+        # 1. Approved CSE event
+        self.approved_event = EventProposal.objects.create(
+            title='Hackathon 2026',
+            description='Coding marathon on AI tools.',
+            proposer=self.faculty,
+            organizing_unit=self.dept_cse,
+            start_date=now + timedelta(days=5),
+            end_date=now + timedelta(days=6),
+            venue='Central Lab',
+            guest_speaker='Dr. S. Raman',
+            status='APPROVED',
+            qr_checkin_token='hack-qr-token'
+        )
+
+        # 2. Approved Robotics Club event
+        self.robotics_event = EventProposal.objects.create(
+            title='Robotics Derby',
+            description='Autonomous bot fight contest.',
+            proposer=self.faculty,
+            organizing_unit=self.club_robotics,
+            start_date=now + timedelta(days=10),
+            end_date=now + timedelta(days=11),
+            venue='Indoor Stadium',
+            status='APPROVED',
+            qr_checkin_token='derby-qr-token'
+        )
+
+        # 3. Unapproved (UNDER_REVIEW) proposal
+        self.draft_proposal = EventProposal.objects.create(
+            title='Secret Future Conclave',
+            description='Still waiting for dean approvals.',
+            proposer=self.faculty,
+            organizing_unit=self.dept_cse,
+            start_date=now + timedelta(days=20),
+            end_date=now + timedelta(days=21),
+            venue='Auditorium 2',
+            status='UNDER_REVIEW',
+            qr_checkin_token='secret-token'
+        )
+
+    def test_student_events_search_and_filtering(self):
+        """Phase B: Verify search query and organizing unit filters."""
+        self.client.login(username='stu_portal', password='password123')
+
+        # 1. Default shows both approved events
+        res = self.client.get('/events/')
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'Hackathon 2026')
+        self.assertContains(res, 'Robotics Derby')
+        self.assertNotContains(res, 'Secret Future Conclave')
+
+        # 2. Filter by search query 'Robotics'
+        res_search = self.client.get('/events/?q=Robotics')
+        self.assertEqual(res_search.status_code, 200)
+        self.assertContains(res_search, 'Robotics Derby')
+        self.assertNotContains(res_search, 'Hackathon 2026')
+
+        # 3. Filter by department unit ID
+        res_dept = self.client.get(f'/events/?unit={self.dept_cse.id}')
+        self.assertEqual(res_dept.status_code, 200)
+        self.assertContains(res_dept, 'Hackathon 2026')
+        self.assertNotContains(res_dept, 'Robotics Derby')
+
+    def test_unpublished_event_hidden_from_students(self):
+        """Phase B: Students cannot view unpublished event detail pages."""
+        self.client.login(username='stu_portal', password='password123')
+        res = self.client.get(f'/events/{self.draft_proposal.id}/')
+        # Redirects to student_events with error message
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.url, '/events/')
+
+        # Staff can view the unpublished event
+        self.client.login(username='fac_portal', password='password123')
+        res_staff = self.client.get(f'/events/{self.draft_proposal.id}/')
+        self.assertEqual(res_staff.status_code, 200)
+
+    def test_event_registration_lifecycle_and_cancellation(self):
+        """Phase B: Register -> Update role -> Cancel registration."""
+        self.client.login(username='stu_portal', password='password123')
+
+        # 1. Register as PARTICIPANT
+        res_reg = self.client.post(f'/events/{self.approved_event.id}/register/', {'role': 'PARTICIPANT'})
+        self.assertEqual(res_reg.status_code, 302)
+        reg = EventRegistration.objects.get(event=self.approved_event, student=self.student)
+        self.assertEqual(reg.role, 'PARTICIPANT')
+        self.assertEqual(reg.status, 'REGISTERED')
+
+        # 2. Change role to VOLUNTEER
+        res_update = self.client.post(f'/events/{self.approved_event.id}/register/', {'role': 'VOLUNTEER'})
+        self.assertEqual(res_update.status_code, 302)
+        reg.refresh_from_db()
+        self.assertEqual(reg.role, 'VOLUNTEER')
+
+        # 3. View detail page shows registered status
+        res_detail = self.client.get(f'/events/{self.approved_event.id}/')
+        self.assertEqual(res_detail.status_code, 200)
+        self.assertContains(res_detail, 'You Are Registered!')
+        self.assertContains(res_detail, 'Student Volunteer')
+
+        # 4. Cancel registration
+        res_cancel = self.client.post(f'/events/{self.approved_event.id}/cancel/')
+        self.assertEqual(res_cancel.status_code, 302)
+        self.assertFalse(EventRegistration.objects.filter(event=self.approved_event, student=self.student).exists())
+
+    def test_staff_blocked_from_student_registration(self):
+        """Staff members are barred from registering as student attendees."""
+        self.client.login(username='fac_portal', password='password123')
+        res = self.client.post(f'/events/{self.approved_event.id}/register/', {'role': 'PARTICIPANT'})
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(res.url, f'/events/{self.approved_event.id}/')
+        self.assertFalse(EventRegistration.objects.filter(event=self.approved_event, student=self.faculty).exists())
+
